@@ -6,6 +6,14 @@ from nexus import config
 class GitOperations:
     def __init__(self, repo_path: str = None):
         self.repo_path = Path(repo_path or config.WORKSPACE_DIR)
+        # Configure safe directory to prevent dubious ownership issues inside Docker containers
+        try:
+            subprocess.run(
+                ["git", "config", "--global", "--add", "safe.directory", "*"],
+                capture_output=True
+            )
+        except Exception:
+            pass
 
     def _run_git(self, args: list[str]) -> str:
         res = subprocess.run(
