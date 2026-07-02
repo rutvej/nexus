@@ -15,6 +15,24 @@ class GitOperations:
         except Exception:
             pass
 
+        # 1. Initialize git if not already present
+        if not (self.repo_path / ".git").exists():
+            subprocess.run(["git", "init"], cwd=self.repo_path, capture_output=True)
+
+        # 2. Checkout branch
+        timestamp = int(time.time())
+        try:
+            # Check if HEAD exists (contains commits)
+            res = subprocess.run(["git", "rev-parse", "HEAD"], cwd=self.repo_path, capture_output=True)
+            if res.returncode == 0:
+                # Checkout new run branch
+                subprocess.run(["git", "checkout", "-b", f"nexus/run-{timestamp}"], cwd=self.repo_path, capture_output=True)
+            else:
+                # Checkout nexus/main
+                subprocess.run(["git", "checkout", "-b", "nexus/main"], cwd=self.repo_path, capture_output=True)
+        except Exception:
+            pass
+
     def _run_git(self, args: list[str]) -> str:
         res = subprocess.run(
             ["git"] + args,

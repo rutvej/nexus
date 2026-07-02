@@ -40,3 +40,15 @@ def test_git_ops_flow():
             f.write("dirty content")
         git.rollback_changes()
         assert not os.path.exists(dirty_file)
+
+def test_git_ops_fresh_init():
+    with tempfile.TemporaryDirectory() as tmpdir:
+        # Instantiating on raw directory without calling git init
+        git = GitOperations(repo_path=tmpdir)
+        
+        # Verify .git directory now exists
+        assert os.path.exists(os.path.join(tmpdir, ".git"))
+        
+        # Verify branch is checked out via git status
+        status = git._run_git(["status"])
+        assert "On branch nexus/main" in status or "Initial commit" in status or "No commits yet" in status

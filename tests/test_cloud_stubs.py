@@ -31,3 +31,32 @@ def test_stubs_not_available_by_default():
     assert deepseek.is_available() is False
     res = deepseek.generate("Hi")
     assert res.success is False
+
+import pytest
+
+def test_stubs_raise_not_implemented():
+    config.OPENAI_API_KEY = "dummy"
+    config.ANTHROPIC_API_KEY = "dummy"
+    config.GOOGLE_API_KEY = "dummy"
+    config.DEEPSEEK_API_KEY = "dummy"
+
+    openai = OpenAIBackend()
+    assert openai.is_available() is True
+    with pytest.raises(NotImplementedError):
+        openai.generate("Hi")
+
+    anthropic = AnthropicBackend()
+    assert anthropic.is_available() is True
+    with pytest.raises(NotImplementedError):
+        anthropic.generate("Hi")
+
+    google = GoogleBackend()
+    assert google.is_available() is True
+    with pytest.raises(NotImplementedError):
+        google.generate("Hi")
+
+    deepseek = DeepSeekBackend()
+    assert deepseek.is_available() is True
+    with pytest.raises(NotImplementedError):
+        deepseek.generate("Hi")
+

@@ -84,10 +84,6 @@ class Worker:
                 # Write the function signature and the body
                 f.write(f"\n{ticket.function_signature}:\n")
                 # Indent the body lines if needed, or assume model returns indented body
-                # Standard templates specify: "Write ONLY the function body"
-                # So if it is only the body, we must indent it under the signature.
-                # If the body is already indented/starts with spaces, append directly.
-                # Let's do simple indentation block:
                 indented_code = ""
                 for line in code.splitlines():
                     if line.strip() and not line.startswith("    "):
@@ -95,9 +91,70 @@ class Worker:
                     else:
                         indented_code += line + "\n"
                 f.write(indented_code + "\n")
+        elif ticket.type == TicketType.FIX_BUG:
+            # Modify/replace the function in the existing file rather than wiping the whole file
+            if os.path.exists(full_path):
+                with open(full_path, "r", encoding="utf-8") as f:
+                    existing_code = f.read()
+                updated_code = self._replace_function_in_code(existing_code, ticket.function_signature, code)
+                with open(full_path, "w", encoding="utf-8") as f:
+                    f.write(updated_code)
+            else:
+                with open(full_path, "w", encoding="utf-8") as f:
+                    f.write(code + "\n")
         else:
-            # Direct overwrite for CREATE_FILE, WRITE_TEST, FIX_BUG
+            # Direct overwrite for CREATE_FILE, WRITE_TEST
             with open(full_path, "w", encoding="utf-8") as f:
                 f.write(code + "\n")
                 
         return True
+
+    def _replace_function_in_code(self, existing_code: str, sig: str, new_function_body: str) -> str:
+        """
+        Replaces a function's body in the existing file using the signature name.
+        """
+        match = re.search(r"def\s+(\w+)\s*\(", sig)
+        if not match:
+            return existing_code + "\n" + new_function_body
+            
+        func_name = match.group(1)
+        lines = existing_code.splitlines()
+        
+        start_idx = -1
+        end_idx = -1
+        def_indent = 0
+        
+        for i, line in enumerate(lines):
+            if re.search(r"\bdef\s+" + re.escape(func_name) + r"\b", line):
+                start_idx = i
+                def_indent = len(line) - len(line.lstrip())
+                break
+                
+        if start_idx == -1:
+            return existing_code + "\n" + new_function_body
+
+        for j in range(start_idx + 1, len(lines)):
+            line = lines[j]
+            stripped = line.strip()
+            if not stripped or stripped.startswith("#"):
+                continue
+            indent = len(line) - len(line.lstrip())
+            if indent <= def_indent:
+                end_idx = j
+                break
+        else:
+            end_idx = len(lines)
+            
+        formatted_body = ""
+        for line in new_function_body.splitlines():
+            if line.strip() and not line.startswith("    "):
+                formatted_body += "    " + line + "\n"
+            else:
+                formatted_body += line + "\n"
+                
+        new_func_block = f"{sig}:\n{formatted_body}"
+        
+        before = lines[:start_idx]
+        after = lines[end_idx:]
+        
+        return "\n".join(before) + "\n" + new_func_block.strip() + "\n" + "\n".join(after)

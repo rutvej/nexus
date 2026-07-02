@@ -19,10 +19,4 @@ class OpenAIBackend(BaseLLM):
                 error="OpenAI API key not configured."
             )
         # Placeholder for actual request
-        return LLMResponse(
-            text="Stub Response",
-            model="gpt-4o-mini",
-            tokens_used=10,
-            latency_ms=100.0,
-            success=True
-        )
+        raise NotImplementedError("Cloud API integration pending real HTTP call implementation")
