@@ -1,5 +1,4 @@
 import json
-import re
 from typing import List
 from nexus.tickets.models import Ticket, TicketType, TicketStatus
 from nexus.tickets.queue import TicketQueue
@@ -18,7 +17,7 @@ FEATURE REQUEST:
 {feature_description}
 
 You must output a JSON list of ticket objects. Each ticket object must have exactly these keys:
-- "id": A unique identifier (e.g. "TWIT-001", "TWIT-002")
+- "id": A unique identifier (e.g. "TKT-001", "TKT-002")
 - "type": One of: "create_file", "write_function", "write_test", "run_tests", "fix_bug", "integration_test"
 - "title": A short title (e.g. "Write function create_user")
 - "target_file": The file path to modify or create (e.g. "src/models/user.py")
@@ -27,7 +26,7 @@ You must output a JSON list of ticket objects. Each ticket object must have exac
 - "return_type": The return type description, if type is "write_function" (otherwise empty)
 - "dependencies": The standard library modules to import/depend on
 - "description": A 1-2 sentence description of what the function/file should do
-- "depends_on": A list of IDs of other tickets this ticket depends on (e.g. ["TWIT-001"])
+- "depends_on": A list of IDs of other tickets this ticket depends on (e.g. ["TKT-001"])
 
 Output ONLY the raw JSON list, starting with [ and ending with ]. Do not wrap it in markdown. Do not write any explanations outside the JSON.
 """
@@ -49,7 +48,6 @@ class Manager:
             cleaned = cleaned[:-3]
         cleaned = cleaned.strip()
         
-        # In case there's leading/trailing non-json garbage
         start_idx = cleaned.find('[')
         end_idx = cleaned.rfind(']')
         if start_idx != -1 and end_idx != -1:
@@ -68,8 +66,8 @@ class Manager:
             feature_description=feature_description
         )
         
-        # Use dummy/empty ticket for routing decomposition
-        route_ticket = Ticket(id="DECOMP-000", type=TicketType.CREATE_FILE, title="Decompose Feature")
+        # Use dummy ticket for routing decomposition
+        route_ticket = Ticket(id="DECOMP-000", type=TicketType.CREATE_FILE, title="Decompose Feature", status=TicketStatus.IN_PROGRESS, target_file="DECOMP")
         response = self.router.route_and_generate(prompt, route_ticket, max_tokens=1000)
         
         if not response.success:

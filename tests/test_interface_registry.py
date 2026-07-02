@@ -1,45 +1,25 @@
+import tempfile
 from nexus.project.guide import ProjectGuide
 from nexus.project.interface_registry import InterfaceRegistry
 
-def test_register_interface(tmp_path):
-    guide_file = tmp_path / "PROJECT_GUIDE.md"
-    guide = ProjectGuide(guide_path=str(guide_file))
-    
-    # Initialize the guide with empty registry
-    guide.update_section("## Interface Registry", "")
-    
-    registry = InterfaceRegistry(guide)
-    registry.register_interface(
-        file_path="src/models/user.py",
-        function_signature="def create_user(username: str) -> dict",
-        description="Returns user dict"
-    )
-    
-    interfaces = registry.get_interfaces_for_file("src/models/user.py")
-    assert len(interfaces) == 1
-    assert interfaces[0][0] == "def create_user(username: str) -> dict"
-    assert interfaces[0][1] == "Returns user dict"
-
-def test_update_existing_interface(tmp_path):
-    guide_file = tmp_path / "PROJECT_GUIDE.md"
-    guide = ProjectGuide(guide_path=str(guide_file))
-    guide.update_section("## Interface Registry", "")
-    
-    registry = InterfaceRegistry(guide)
-    registry.register_interface(
-        file_path="src/models/user.py",
-        function_signature="def create_user(username: str) -> dict",
-        description="Returns user dict"
-    )
-    
-    # Update same function signature/description
-    registry.register_interface(
-        file_path="src/models/user.py",
-        function_signature="def create_user(username: str, role: str = 'user') -> dict",
-        description="Returns user dict with role"
-    )
-    
-    interfaces = registry.get_interfaces_for_file("src/models/user.py")
-    assert len(interfaces) == 1
-    assert interfaces[0][0] == "def create_user(username: str, role: str = 'user') -> dict"
-    assert interfaces[0][1] == "Returns user dict with role"
+def test_interface_registry_flow():
+    with tempfile.TemporaryDirectory() as tmpdir:
+        guide = ProjectGuide(workspace_path=tmpdir)
+        reg = InterfaceRegistry(guide)
+        
+        # Test add and save
+        reg.add_signature("src/math.py", "def add(a: int, b: int) -> int", "Add two integers")
+        reg.add_signature("src/math.py", "def sub(a: int, b: int) -> int", "Subtract two integers")
+        reg.add_signature("src/auth.py", "def login()", "User login")
+        reg.save()
+        
+        # Re-read and verify parsing works
+        reg2 = InterfaceRegistry(guide)
+        assert "src/math.py" in reg2.registry
+        assert len(reg2.registry["src/math.py"]) == 2
+        assert reg2.registry["src/math.py"][0]["signature"] == "def add(a: int, b: int) -> int"
+        
+        # Test related interfaces
+        related = reg2.get_related_interfaces("src/math.py")
+        assert "src/auth.py" in related
+        assert "src/math.py" not in related

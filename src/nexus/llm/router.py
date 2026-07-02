@@ -1,63 +1,44 @@
-from typing import List, Optional
-from nexus.llm.base import BaseLLM, LLMResponse, NotConfiguredError
-from nexus.tickets.models import Ticket
+from typing import List
+from nexus.llm.base import BaseLLM, LLMResponse
+from nexus.llm.ollama_backend import OllamaBackend
+from nexus.llm.cloud.openai_backend import OpenAIBackend
+from nexus.llm.cloud.anthropic_backend import AnthropicBackend
+from nexus.llm.cloud.google_backend import GoogleBackend
+from nexus.llm.cloud.deepseek_backend import DeepSeekBackend
 
 class ModelRouter:
-    def __init__(self, local_llm: BaseLLM, cloud_llms: List[BaseLLM] = None):
-        self.local_llm = local_llm
-        self.cloud_llms = cloud_llms or []
+    def __init__(self, local_override: BaseLLM = None, cloud_overrides: List[BaseLLM] = None):
+        self.local = local_override or OllamaBackend()
+        self.cloud_backends = cloud_overrides or [
+            OpenAIBackend(),
+            AnthropicBackend(),
+            GoogleBackend(),
+            DeepSeekBackend()
+        ]
 
-    def route_and_generate(self, prompt: str, ticket: Ticket, max_tokens: int = 400) -> LLMResponse:
+    def route_and_generate(self, prompt: str, ticket=None, max_tokens: int = 400) -> LLMResponse:
         """
-        Routes the prompt to the appropriate model based on ticket retry status.
-        If retry_count < 3: use local model.
-        If retry_count >= 3: use the first available cloud model.
-        If both fail or are unavailable, return an unsuccessful response.
+        Coordinates routing: tries local first, then falls back to first available cloud provider.
         """
-        # Local routing
-        if ticket.retry_count < 3:
-            if self.local_llm.is_available():
-                return self.local_llm.generate(prompt, max_tokens)
-            else:
-                return LLMResponse(
-                    text="",
-                    model="local",
-                    tokens_used=0,
-                    latency_ms=0.0,
-                    success=False,
-                    error="Local model is not available."
-                )
-
-        # Cloud routing (retry_count >= 3)
-        available_cloud = [c for c in self.cloud_llms if c.is_available()]
-        if available_cloud:
-            cloud_llm = available_cloud[0]
-            try:
-                return cloud_llm.generate(prompt, max_tokens)
-            except NotConfiguredError as e:
-                return LLMResponse(
-                    text="",
-                    model=cloud_llm.name(),
-                    tokens_used=0,
-                    latency_ms=0.0,
-                    success=False,
-                    error=f"Cloud model configuration error: {e}"
-                )
-            except Exception as e:
-                return LLMResponse(
-                    text="",
-                    model=cloud_llm.name(),
-                    tokens_used=0,
-                    latency_ms=0.0,
-                    success=False,
-                    error=f"Cloud model generation failed: {e}"
-                )
-
+        # 1. Try local model
+        if self.local.is_available():
+            res = self.local.generate(prompt, max_tokens)
+            if res.success:
+                return res
+        
+        # 2. Try cloud backends (first available)
+        for backend in self.cloud_backends:
+            if backend.is_available():
+                res = backend.generate(prompt, max_tokens)
+                if res.success:
+                    return res
+        
+        # 3. No backends available
         return LLMResponse(
             text="",
-            model="router",
+            model="none",
             tokens_used=0,
             latency_ms=0.0,
             success=False,
-            error="Local model exceeded retries and no cloud model is configured/available."
+            error="No available LLM backends."
         )

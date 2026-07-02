@@ -1,72 +1,47 @@
+import os
+import tempfile
 from unittest.mock import MagicMock
-from pathlib import Path
-from nexus.tickets.models import Ticket, TicketType
-from nexus.llm.base import LLMResponse
-from nexus.llm.router import ModelRouter
+from nexus.tickets.models import Ticket, TicketType, TicketStatus
 from nexus.agent.worker import Worker
+from nexus.llm.base import LLMResponse
 
-def test_extract_code_markdown():
-    router = MagicMock(spec=ModelRouter)
-    worker = Worker(router=router)
-    
-    text_with_markdown = "Here is your code:\n```python\ndef add(a, b):\n    return a + b\n```\nHope this helps!"
-    code = worker.extract_code(text_with_markdown)
-    assert code == "def add(a, b):\n    return a + b"
+def test_worker_extract_code():
+    w = Worker(MagicMock(), "")
+    assert w.extract_code("```python\nprint(1)\n```") == "print(1)"
+    assert w.extract_code("```\nprint(2)\n```") == "print(2)"
+    assert w.extract_code("print(3)") == "print(3)"
 
-def test_execute_ticket_create_file(tmp_path):
-    router = MagicMock(spec=ModelRouter)
-    router.route_and_generate.return_value = LLMResponse(
-        text="```python\n# new file content\n```",
-        model="mock",
-        tokens_used=10,
-        latency_ms=1.0,
-        success=True
-    )
-    
-    worker = Worker(router=router, workspace_dir=str(tmp_path))
-    ticket = Ticket(
-        id="T1",
-        type=TicketType.CREATE_FILE,
-        title="Create test file",
-        target_file="test.py",
-        description="Creates test.py"
-    )
-    
-    code = worker.execute_ticket(ticket)
-    assert code == "# new file content"
-    
-    target = tmp_path / "test.py"
-    assert target.exists()
-    assert target.read_text().strip() == "# new file content"
-
-def test_execute_ticket_write_function_append(tmp_path):
-    router = MagicMock(spec=ModelRouter)
-    router.route_and_generate.return_value = LLMResponse(
-        text="def add(a, b):\n    return a + b",
-        model="mock",
-        tokens_used=10,
-        latency_ms=1.0,
-        success=True
-    )
-    
-    worker = Worker(router=router, workspace_dir=str(tmp_path))
-    
-    # 1. Existing file
-    target = tmp_path / "math.py"
-    target.write_text("import os\n")
-    
-    ticket = Ticket(
-        id="T2",
-        type=TicketType.WRITE_FUNCTION,
-        title="Write add function",
-        target_file="math.py",
-        function_signature="def add(a, b) -> int",
-        description="Adds a and b"
-    )
-    
-    code = worker.execute_ticket(ticket)
-    assert "def add" in code
-    
-    file_content = target.read_text()
-    assert "import os" in file_content
-    assert "def add(a, b):" in file_content
+def test_worker_execute_ticket():
+    with tempfile.TemporaryDirectory() as tmpdir:
+        router = MagicMock()
+        router.route_and_generate.return_value = LLMResponse(
+            text="```python\nreturn a + b\n```",
+            model="mock",
+            tokens_used=10,
+            latency_ms=10.0,
+            success=True
+        )
+        
+        w = Worker(router, tmpdir)
+        t = Ticket(
+            id="T-1",
+            type=TicketType.WRITE_FUNCTION,
+            title="Write add",
+            status=TicketStatus.BACKLOG,
+            target_file="math_lib.py",
+            function_signature="def add(a, b)",
+            dependencies="import sys",
+            description="Add two values"
+        )
+        
+        ok = w.execute_ticket(t)
+        assert ok is True
+        
+        # Verify file content
+        file_path = os.path.join(tmpdir, "math_lib.py")
+        assert os.path.exists(file_path)
+        with open(file_path, "r") as f:
+            content = f.read()
+        assert "import sys" in content
+        assert "def add(a, b):" in content
+        assert "return a + b" in content

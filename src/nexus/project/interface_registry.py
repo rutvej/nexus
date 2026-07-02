@@ -1,106 +1,69 @@
 import re
-from typing import Dict, List, Tuple
 from nexus.project.guide import ProjectGuide
 
 class InterfaceRegistry:
     def __init__(self, guide: ProjectGuide):
         self.guide = guide
+        self.registry = self._parse_registry()
 
-    def _parse_registry(self) -> Dict[str, List[Tuple[str, str]]]:
+    def _parse_registry(self) -> dict[str, list[dict]]:
         """
-        Parses the ## Interface Registry section of the PROJECT_GUIDE.md.
-        Returns a dict mapping file_path -> list of (signature, doc).
+        Parses the Interface Registry section of PROJECT_GUIDE.md.
+        Returns a mapping from file path -> list of signature dicts:
+        {"file_path": [{"signature": "...", "description": "..."}]}
         """
-        content = self.guide.read()
-        lines = content.splitlines()
-        
-        # Find the start of the Interface Registry
-        start_idx = -1
-        for idx, line in enumerate(lines):
-            if line.strip() == "## Interface Registry":
-                start_idx = idx
-                break
-                
-        if start_idx == -1:
-            return {}
-
-        # Determine level of the heading
-        level = 2 # '## Interface Registry' is level 2
-
-        # Extract all lines under ## Interface Registry until next heading of same or higher level
-        registry_lines = []
-        for idx in range(start_idx + 1, len(lines)):
-            line = lines[idx]
-            if line.startswith('#'):
-                line_level = len(line) - len(line.lstrip('#'))
-                if line_level <= level:
-                    break
-            registry_lines.append(line)
-
-        registry: Dict[str, List[Tuple[str, str]]] = {}
+        content = self.guide.get_section("Interface Registry")
+        registry = {}
         current_file = None
-
-        for line in registry_lines:
+        
+        for line in content.splitlines():
             line_str = line.strip()
-            if not line_str:
-                continue
-            
-            # Match file header e.g. "### src/models/user.py"
             if line_str.startswith("### "):
                 current_file = line_str[4:].strip()
                 registry[current_file] = []
             elif line_str.startswith("- ") and current_file:
-                # Parse list item e.g. "- `create_user(...)` — Returns ..."
-                # Regex to match: - `signature` — description OR - `signature` - description
-                match = re.match(r"^-\s+`([^`]+)`\s+[—\-]\s+(.*)$", line_str)
+                # Format: - `signature` — description
+                match = re.match(r"-\s+`([^`]+)`\s*(?:—\s*(.*))?", line_str)
                 if match:
-                    sig, doc = match.groups()
-                    registry[current_file].append((sig.strip(), doc.strip()))
-                else:
-                    # Fallback if separator is different
-                    match_fallback = re.match(r"^-\s+`([^`]+)`(.*)$", line_str)
-                    if match_fallback:
-                        sig, rest = match_fallback.groups()
-                        doc = rest.strip().lstrip('—-').strip()
-                        registry[current_file].append((sig.strip(), doc))
-
+                    sig = match.group(1).strip()
+                    desc = match.group(2).strip() if match.group(2) else ""
+                    registry[current_file].append({"signature": sig, "description": desc})
         return registry
 
-    def register_interface(self, file_path: str, function_signature: str, description: str):
-        """Registers or updates a function signature for a specific file path."""
-        registry = self._parse_registry()
+    def add_signature(self, file_path: str, signature: str, description: str):
+        if file_path not in self.registry:
+            self.registry[file_path] = []
         
-        if file_path not in registry:
-            registry[file_path] = []
+        # Remove if exists already
+        self.registry[file_path] = [item for item in self.registry[file_path] if item["signature"] != signature]
+        self.registry[file_path].append({"signature": signature, "description": description})
 
-        # Check if function signature already exists (by function name)
-        func_name = function_signature.split('(')[0].replace('def ', '').strip()
-        
-        updated = False
-        for idx, (sig, doc) in enumerate(registry[file_path]):
-            existing_name = sig.split('(')[0].replace('def ', '').strip()
-            if existing_name == func_name:
-                registry[file_path][idx] = (function_signature, description)
-                updated = True
-                break
-                
-        if not updated:
-            registry[file_path].append((function_signature, description))
-
-        # Re-format to markdown
-        md_lines = []
-        for path, funcs in sorted(registry.items()):
-            if not funcs:
+    def get_related_interfaces(self, current_file: str) -> str:
+        """
+        Returns all registered signatures EXCEPT for the current file.
+        Format:
+        ### file_path
+        - `signature` - description
+        """
+        lines = []
+        for file_path, items in self.registry.items():
+            if file_path == current_file:
                 continue
-            md_lines.append(f"### {path}")
-            for sig, doc in funcs:
-                md_lines.append(f"- `{sig}` — {doc}")
-            md_lines.append("") # empty line between files
+            if items:
+                lines.append(f"### {file_path}")
+                for item in items:
+                    lines.append(f"- `{item['signature']}` — {item['description']}")
+        return "\n".join(lines)
 
-        section_content = "\n" + "\n".join(md_lines)
-        self.guide.update_section("## Interface Registry", section_content)
+    def to_markdown(self) -> str:
+        lines = ["## Interface Registry"]
+        for file_path, items in sorted(self.registry.items()):
+            if items:
+                lines.append(f"\n### {file_path}")
+                for item in items:
+                    lines.append(f"- `{item['signature']}` — {item['description']}")
+        return "\n".join(lines)
 
-    def get_interfaces_for_file(self, file_path: str) -> List[Tuple[str, str]]:
-        """Returns list of (signature, doc) for a given file."""
-        registry = self._parse_registry()
-        return registry.get(file_path, [])
+    def save(self):
+        markdown = self.to_markdown()
+        self.guide.update_section("Interface Registry", markdown)

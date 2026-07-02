@@ -1,77 +1,37 @@
-import os
-import pytest
 from nexus.tickets.models import Ticket, TicketType, TicketStatus
 from nexus.tickets.queue import TicketQueue
 
-@pytest.fixture
-def temp_db(tmp_path):
-    db_file = tmp_path / "test_tickets.db"
-    return str(db_file)
-
-def test_add_and_get_ticket(temp_db):
-    queue = TicketQueue(db_path=temp_db)
-    ticket = Ticket(
-        id="T1",
-        type=TicketType.CREATE_FILE,
-        title="Test Ticket",
-        depends_on=["DEP1"]
-    )
-    queue.add_ticket(ticket)
-    
-    retrieved = queue.get_ticket("T1")
-    assert retrieved is not None
-    assert retrieved.id == "T1"
-    assert retrieved.title == "Test Ticket"
-    assert retrieved.type == TicketType.CREATE_FILE
-    assert retrieved.depends_on == ["DEP1"]
-
-def test_update_ticket(temp_db):
-    queue = TicketQueue(db_path=temp_db)
-    ticket = Ticket(
-        id="T1",
-        type=TicketType.CREATE_FILE,
-        title="Test Ticket"
-    )
-    queue.add_ticket(ticket)
-    
-    ticket.status = TicketStatus.IN_PROGRESS
-    ticket.retry_count = 1
-    queue.update_ticket(ticket)
-    
-    retrieved = queue.get_ticket("T1")
-    assert retrieved.status == TicketStatus.IN_PROGRESS
-    assert retrieved.retry_count == 1
-
-def test_get_next_runnable_ticket(temp_db):
-    queue = TicketQueue(db_path=temp_db)
-    
-    # T1 has dependency T2
+def test_queue_in_memory():
+    q = TicketQueue(":memory:")
     t1 = Ticket(
-        id="T1",
-        type=TicketType.WRITE_FUNCTION,
+        id="T-01",
+        type=TicketType.CREATE_FILE,
         title="T1",
-        depends_on=["T2"]
+        status=TicketStatus.BACKLOG,
+        target_file="t1.py"
     )
-    # T2 has no dependencies
     t2 = Ticket(
-        id="T2",
-        type=TicketType.WRITE_TEST,
-        title="T2"
+        id="T-02",
+        type=TicketType.WRITE_FUNCTION,
+        title="T2",
+        status=TicketStatus.BACKLOG,
+        target_file="t2.py",
+        depends_on=["T-01"]
     )
     
-    queue.add_ticket(t1)
-    queue.add_ticket(t2)
+    q.add_ticket(t1)
+    q.add_ticket(t2)
     
-    # T2 should be runnable, T1 should not (since T2 is not done)
-    runnable = queue.get_next_runnable_ticket()
-    assert runnable is not None
-    assert runnable.id == "T2"
+    # Next ready should be T-01, since T-02 is blocked by T-01
+    ready = q.next_ready()
+    assert ready is not None
+    assert ready.id == "T-01"
     
-    # Complete T2
-    t2.status = TicketStatus.DONE
-    queue.update_ticket(t2)
+    # Mark T-01 as DONE
+    t1.status = TicketStatus.DONE
+    q.update_ticket(t1)
     
-    # T1 should now be runnable
-    runnable = queue.get_next_runnable_ticket()
-    assert runnable is not None
-    assert runnable.id == "T1"
+    # Next ready should now be T-02
+    ready = q.next_ready()
+    assert ready is not None
+    assert ready.id == "T-02"

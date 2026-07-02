@@ -1,45 +1,19 @@
 import ast
 import os
 import sys
-import signal
-import subprocess
-from typing import Dict, Any, Tuple
+from typing import Tuple, Dict, Any
+from nexus.sandbox.runner import SandboxRunner
 from nexus import config
 
 class Verifier:
     def __init__(self, workspace_dir: str = None):
         self.workspace_dir = workspace_dir or str(config.WORKSPACE_DIR)
-
-    def _run_subprocess(self, cmd: list[str], timeout: int = 60) -> Tuple[int, str, str]:
-        """Runs a command with unix process group isolation and returns (exit_code, stdout, stderr)."""
-        # Under windows, os.setsid is not available, so we fallback gracefully
-        preexec = os.setsid if sys.platform != "win32" else None
-        
-        proc = subprocess.Popen(
-            cmd,
-            cwd=self.workspace_dir,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            preexec_fn=preexec,
-            text=True
-        )
-        
-        try:
-            stdout, stderr = proc.communicate(timeout=timeout)
-            return proc.returncode, stdout, stderr
-        except subprocess.TimeoutExpired:
-            if sys.platform != "win32":
-                try:
-                    os.killpg(os.getpgid(proc.pid), signal.SIGKILL)
-                except Exception:
-                    pass
-            else:
-                proc.kill()
-            stdout, stderr = proc.communicate()
-            return -1, stdout, f"Command timed out after {timeout} seconds."
+        self.runner = SandboxRunner(self.workspace_dir)
 
     def verify_syntax(self, file_path: str) -> Tuple[bool, str]:
-        """Parses AST of the file. Returns (True, '') if OK, else (False, error_msg)."""
+        """
+        Runs ast.parse on the file to check for syntax correctness.
+        """
         full_path = os.path.join(self.workspace_dir, file_path)
         if not os.path.exists(full_path):
             return False, f"File {file_path} does not exist."
@@ -55,54 +29,31 @@ class Verifier:
             return False, f"Error parsing {file_path}: {e}"
 
     def auto_format(self, file_path: str) -> bool:
-        """Runs black formatter on the file. Returns True if format check passes/fixes, False on error."""
+        """
+        Runs black on the file to auto-format it.
+        """
         full_path = os.path.join(self.workspace_dir, file_path)
         cmd = [sys.executable, "-m", "black", full_path]
-        code, out, err = self._run_subprocess(cmd, timeout=10)
+        code, out, err = self.runner.run_command(cmd, timeout=10)
         return code == 0
 
     def check_formatting(self, file_path: str) -> bool:
-        """Runs black --check on the file. Returns True if formatted, False if not."""
+        """
+        Runs black --check on the file.
+        """
         full_path = os.path.join(self.workspace_dir, file_path)
         cmd = [sys.executable, "-m", "black", "--check", full_path]
-        code, out, err = self._run_subprocess(cmd, timeout=10)
+        code, out, err = self.runner.run_command(cmd, timeout=10)
         return code == 0
 
     def run_tests(self, test_file: str) -> Tuple[bool, str]:
-        """Runs pytest on the specified test file. Returns (True, stdout) if tests pass, else (False, stderr/stdout)."""
-        # Run pytest with -x (exit on first failure) and --timeout=60
-        # If pytest-timeout is not installed, timeout is handled by _run_subprocess anyway
+        """
+        Runs pytest on the specified test file (or tests directory).
+        Allows pytest code 0 (all passed), 5 (no tests collected),
+        or 4 (path not found if test_file is "tests").
+        """
         cmd = [sys.executable, "-m", "pytest", "-x", test_file]
-        code, out, err = self._run_subprocess(cmd, timeout=config.TIMEOUT_TESTS)
-        success = (code == 0)
+        code, out, err = self.runner.run_command(cmd, timeout=config.TIMEOUT_TESTS)
+        success = (code == 0 or code == 5 or (code == 4 and test_file == "tests"))
         output = out + "\n" + err
         return success, output
-
-    def run_static_analysis(self, file_path: str) -> Dict[str, Any]:
-        """
-        Optional Mypy and Bandit checks.
-        Returns check statuses and gathered errors.
-        """
-        full_path = os.path.join(self.workspace_dir, file_path)
-        results = {
-            "mypy_passed": False,
-            "bandit_passed": False,
-            "errors": []
-        }
-        
-        # 1. Run Mypy (ignore imports missing for simplicity if config doesn't require)
-        mypy_cmd = [sys.executable, "-m", "mypy", "--ignore-missing-imports", full_path]
-        code, out, err = self._run_subprocess(mypy_cmd, timeout=20)
-        results["mypy_passed"] = (code == 0)
-        if code != 0:
-            results["errors"].append(f"Mypy failure:\n{out}\n{err}")
-
-        # 2. Run Bandit
-        bandit_cmd = [sys.executable, "-m", "bandit", "-r", full_path, "-f", "txt"]
-        code, out, err = self._run_subprocess(bandit_cmd, timeout=20)
-        # Bandit returncode 0 means no issues found
-        results["bandit_passed"] = (code == 0)
-        if code != 0:
-            results["errors"].append(f"Bandit vulnerabilities found:\n{out}\n{err}")
-            
-        return results

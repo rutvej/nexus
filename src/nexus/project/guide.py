@@ -2,31 +2,23 @@ import os
 from pathlib import Path
 from nexus import config
 
-DEFAULT_GUIDE_CONTENT = """# Nexus Project Guide
+DEFAULT_GUIDE_CONTENT = """# PROJECT GUIDE
 
-## 1. Technology Stack
-- Language: Python 3.12
-- Database: SQLite
-- Framework: Flask
+## Tech Stack
+- Python
 
-## 2. Directory Structure
-- src/: Core implementation files
-- tests/: Unit and integration tests
+## Directory Structure
+- src/
 
-## 3. Active Schemas
-None yet.
+## Data Schemas
 
-## 4. Architectural Conventions
-- All database operations must utilize the sqlite3 context manager.
+## Interface Registry
 """
 
 class ProjectGuide:
-    def __init__(self, guide_path: str = None):
-        if guide_path:
-            self.guide_path = Path(guide_path)
-        else:
-            self.guide_path = config.WORKSPACE_DIR / ".nexus" / "PROJECT_GUIDE.md"
-        # Ensure parent directory exists
+    def __init__(self, workspace_path: str = None):
+        self.workspace_path = Path(workspace_path or config.WORKSPACE_DIR)
+        self.guide_path = self.workspace_path / ".nexus" / "PROJECT_GUIDE.md"
         self.guide_path.parent.mkdir(parents=True, exist_ok=True)
         if not self.guide_path.exists():
             self.write(DEFAULT_GUIDE_CONTENT)
@@ -41,48 +33,56 @@ class ProjectGuide:
         with open(self.guide_path, "w", encoding="utf-8") as f:
             f.write(content)
 
-    def update_section(self, heading: str, content: str):
+    def get_section(self, section_name: str) -> str:
         """
-        Updates a section identified by a heading (e.g. '## 3. Active Schemas' or '## Interface Registry').
-        If the heading is found, replaces the content under it up to the next heading of same or higher level.
-        If the heading is not found, appends it.
+        Reads a specific header section (e.g. "## Data Schemas") up to the next heading.
         """
-        current_guide = self.read()
-        lines = current_guide.splitlines()
+        content = self.read()
+        lines = content.splitlines()
+        section_lines = []
+        in_section = False
         
-        heading_index = -1
-        # Find heading index
-        for idx, line in enumerate(lines):
-            if line.strip() == heading.strip():
-                heading_index = idx
-                break
-        
-        if heading_index == -1:
-            # Heading not found, append to the end
-            new_guide = current_guide.rstrip() + f"\n\n{heading}\n{content}\n"
-            self.write(new_guide)
-            return
-
-        # Determine heading level (number of leading #)
-        level = len(heading) - len(heading.lstrip('#'))
-
-        # Find the next heading of the same or higher level (i.e. number of '#' <= level)
-        next_heading_index = -1
-        for idx in range(heading_index + 1, len(lines)):
-            line = lines[idx]
-            if line.startswith('#'):
-                # Check level
-                line_level = len(line) - len(line.lstrip('#'))
-                if line_level <= level:
-                    next_heading_index = idx
+        for line in lines:
+            clean_line = line.strip()
+            is_header = (clean_line.startswith("## ") or clean_line.startswith("# ")) and not clean_line.startswith("###")
+            if is_header:
+                if in_section:
                     break
+                if section_name.lower() in clean_line.lower():
+                    in_section = True
+                    section_lines.append(line)
+            elif in_section:
+                section_lines.append(line)
+                
+        return "\n".join(section_lines)
 
-        new_lines = lines[:heading_index + 1]
-        # Append the new section content
-        new_lines.extend(content.splitlines())
+    def update_section(self, section_name: str, new_content: str):
+        """
+        Replaces the content under section_name with new_content.
+        """
+        content = self.read()
+        lines = content.splitlines()
+        new_lines = []
+        in_section = False
+        replaced = False
         
-        if next_heading_index != -1:
-            # Append the remaining lines after the next heading
-            new_lines.extend(lines[next_heading_index:])
+        for line in lines:
+            clean_line = line.strip()
+            is_header = (clean_line.startswith("## ") or clean_line.startswith("# ")) and not clean_line.startswith("###")
+            if is_header:
+                if in_section:
+                    in_section = False
+                if section_name.lower() in clean_line.lower():
+                    in_section = True
+                    new_lines.append(new_content.strip())
+                    replaced = True
+                    continue
+            if not in_section:
+                new_lines.append(line)
+                
+        if not replaced:
+            # If section wasn't found, append it at the end
+            new_lines.append("")
+            new_lines.append(new_content.strip())
             
         self.write("\n".join(new_lines) + "\n")

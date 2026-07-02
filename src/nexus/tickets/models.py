@@ -1,7 +1,6 @@
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Optional, List
-import datetime
+from typing import List
 
 class TicketStatus(Enum):
     BACKLOG = "backlog"
@@ -21,21 +20,21 @@ class TicketType(Enum):
 
 @dataclass
 class Ticket:
-    id: str                                    # e.g., "TWIT-001"
+    id: str
     type: TicketType
-    title: str                                 # e.g., "Write function create_user"
-    status: TicketStatus = TicketStatus.BACKLOG
+    title: str
+    status: TicketStatus
     
-    # === MANDATORY CONTEXT ===
-    target_file: str = ""                      # e.g., "src/models/user.py"
-    function_signature: str = ""               # e.g., "def create_user(username: str, password: str) -> dict"
-    parameters: str = ""                       # e.g., "username: str, password: str"
-    return_type: str = ""                      # e.g., "dict with keys: id, username, password_hash"
-    dependencies: str = ""                     # e.g., "import sqlite3, import hashlib"
-    related_interfaces: str = ""               # Signatures of functions this depends on
-    description: str = ""                      # What the function should do (1-2 sentences)
+    # MANDATORY CONTEXT
+    target_file: str
+    function_signature: str = ""
+    parameters: str = ""
+    return_type: str = ""
+    dependencies: str = ""
+    related_interfaces: str = ""
+    description: str = ""
     
-    # === EXECUTION STATE ===
+    # EXECUTION STATE
     retry_count: int = 0
     max_retries: int = 3
     error_log: str = ""
@@ -43,16 +42,11 @@ class Ticket:
     git_hash_before: str = ""
     git_hash_after: str = ""
     
-    # === DEPENDENCIES ===
+    # DEPENDENCIES
     depends_on: List[str] = field(default_factory=list)
     blocks: List[str] = field(default_factory=list)
-    epic: str = ""
+    epic: str = "Epic"
     
-    # === TIMESTAMPS ===
-    created_at: str = field(default_factory=lambda: datetime.datetime.now().isoformat())
-    started_at: Optional[str] = None
-    completed_at: Optional[str] = None
-    
-    # === ESCALATION ===
+    # ESCALATION
     escalation_note: str = ""
     human_feedback: str = ""

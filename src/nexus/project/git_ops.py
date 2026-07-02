@@ -41,6 +41,16 @@ class GitOperations:
     def commit_ticket_changes(self, ticket_id: str, ticket_title: str) -> str:
         # 1. Add all changed files under repo_path
         self._run_git(["add", "."])
+        
+        # Check if there are any staged changes to prevent empty commit errors
+        res = subprocess.run(
+            ["git", "diff", "--cached", "--quiet"],
+            cwd=self.repo_path
+        )
+        if res.returncode == 0:
+            # No changes to commit, return current hash
+            return self.get_current_head_hash()
+            
         # 2. Commit with author info to bypass global config missing errors in tests/containers
         self._run_git([
             "commit",
