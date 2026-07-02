@@ -1,0 +1,40 @@
+Metadata-Version: 2.4
+Name: nexus
+Version: 1.0.0
+Summary: Nexus — Multi-Model Local Coding Agent
+Requires-Python: >=3.10
+Description-Content-Type: text/markdown
+Requires-Dist: typer>=0.12.0
+Requires-Dist: rich>=13.7.0
+
+# Nexus — Multi-Model Local Coding Agent
+
+Nexus is a local-first, CLI-based multi-model coding agent that orchestrates an ensemble of small models under 3B parameters.
+
+## Installation
+
+Activate the virtual environment and install the package:
+```bash
+source venv/bin/activate
+pip install -e .
+```
+
+## Usage
+
+### Check System Status
+Show the status of the Ollama backends and the capability score matrix:
+```bash
+nexus status
+```
+
+### Run a Single Goal
+Execute a task sequentially (one model call at a time to prevent CPU heating):
+```bash
+nexus run "Write a python script to merge two sorted lists"
+```
+
+### Interactive REPL
+Start an interactive chat session:
+```bash
+nexus chat
+```

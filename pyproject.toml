@@ -1,0 +1,17 @@
+[project]
+name = "nexus"
+version = "1.0.0"
+description = "Nexus — Multi-Model Local Coding Agent"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "typer>=0.12.0",
+    "rich>=13.7.0"
+]
+
+[project.scripts]
+nexus = "nexus.cli.app:app"
+
+[build-system]
+requires = ["setuptools>=61.0.0"]
+build-backend = "setuptools.build_meta"

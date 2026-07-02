@@ -1,0 +1,11 @@
+venv/
+__pycache__/
+*.pyc
+.nexus/session.db
+.nexus/session.db-journal
+.nexus/session.db-wal
+.nexus/session.db-shm
+data/
+.pytest_cache/
+.mypy_cache/
+.nexus_config.toml
