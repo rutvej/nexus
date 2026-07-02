@@ -1,15 +1,23 @@
-# Import necessary modules
-from src.database import db
+from sqlalchemy import create_engine, Column, Integer, String
+from sqlalchemy.ext.declarative import declarative_base
+from sqlalchemy.orm import sessionmaker
+
+Base = declarative_base()
 
 
-def create_user(username: str, password: str) -> bool:
-    # Implement user authentication logic here
-    # For example, check if the username and password match a predefined set of credentials
-    # Return True if authentication is successful, False otherwise
-    return True  # Placeholder for actual authentication logic
+class User(Base):
+    __tablename__ = "users"
+    id = Column(Integer, primary_key=True)
+    username = Column(String(80), unique=True, nullable=False)
+    password = Column(String(120), nullable=False)
 
 
-def login_user(username: str, password: str) -> bool:
-    # Assume a simple authentication mechanism for demonstration purposes
-    # In a real-world scenario, you would use a database or an external service to authenticate users
-    return username == "admin" and password == "password"
+def create_user(username, password):
+    engine = create_engine("sqlite:///example.db")
+    Base.metadata.create_all(engine)
+    Session = sessionmaker(bind=engine)
+    session = Session()
+
+    new_user = User(username=username, password=password)
+    session.add(new_user)
+    session.commit()

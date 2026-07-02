@@ -82,7 +82,10 @@ class Worker:
                 if f.tell() == 0 and ticket.dependencies:
                     f.write(ticket.dependencies + "\n\n")
                 # Write the function signature and the body
-                f.write(f"\n{ticket.function_signature}:\n")
+                sig_with_colon = ticket.function_signature.strip()
+                if not sig_with_colon.endswith(":"):
+                    sig_with_colon += ":"
+                f.write(f"\n{sig_with_colon}\n")
                 # Indent the body lines if needed, or assume model returns indented body
                 indented_code = ""
                 for line in code.splitlines():
@@ -152,7 +155,10 @@ class Worker:
             else:
                 formatted_body += line + "\n"
                 
-        new_func_block = f"{sig}:\n{formatted_body}"
+        sig_with_colon = sig.strip()
+        if not sig_with_colon.endswith(":"):
+            sig_with_colon += ":"
+        new_func_block = f"{sig_with_colon}\n{formatted_body}"
         
         before = lines[:start_idx]
         after = lines[end_idx:]
