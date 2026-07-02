@@ -77,23 +77,34 @@ class Worker:
         
         if ticket.type == TicketType.WRITE_FUNCTION:
             # If function ticket, write signature + body or prepend dependencies if file empty
+            func_name_match = re.search(r"def\s+(\w+)\s*\(", ticket.function_signature)
+            has_signature = False
+            if func_name_match:
+                func_name = func_name_match.group(1)
+                if re.search(r"\bdef\s+" + re.escape(func_name) + r"\b", code):
+                    has_signature = True
+
             with open(full_path, "a" if os.path.exists(full_path) else "w", encoding="utf-8") as f:
                 # Add imports if creating new file
                 if f.tell() == 0 and ticket.dependencies:
                     f.write(ticket.dependencies + "\n\n")
-                # Write the function signature and the body
-                sig_with_colon = ticket.function_signature.strip()
-                if not sig_with_colon.endswith(":"):
-                    sig_with_colon += ":"
-                f.write(f"\n{sig_with_colon}\n")
-                # Indent the body lines if needed, or assume model returns indented body
-                indented_code = ""
-                for line in code.splitlines():
-                    if line.strip() and not line.startswith("    "):
-                        indented_code += "    " + line + "\n"
-                    else:
-                        indented_code += line + "\n"
-                f.write(indented_code + "\n")
+                
+                if has_signature:
+                    f.write(f"\n{code}\n")
+                else:
+                    # Write the function signature and the body
+                    sig_with_colon = ticket.function_signature.strip()
+                    if not sig_with_colon.endswith(":"):
+                        sig_with_colon += ":"
+                    f.write(f"\n{sig_with_colon}\n")
+                    # Indent the body lines if needed, or assume model returns indented body
+                    indented_code = ""
+                    for line in code.splitlines():
+                        if line.strip() and not line.startswith("    "):
+                            indented_code += "    " + line + "\n"
+                        else:
+                            indented_code += line + "\n"
+                    f.write(indented_code + "\n")
         elif ticket.type == TicketType.FIX_BUG:
             # Modify/replace the function in the existing file rather than wiping the whole file
             if os.path.exists(full_path):
@@ -155,10 +166,14 @@ class Worker:
             else:
                 formatted_body += line + "\n"
                 
-        sig_with_colon = sig.strip()
-        if not sig_with_colon.endswith(":"):
-            sig_with_colon += ":"
-        new_func_block = f"{sig_with_colon}\n{formatted_body}"
+        # Check if new_function_body already contains def func_name
+        if re.search(r"\bdef\s+" + re.escape(func_name) + r"\b", new_function_body):
+            new_func_block = new_function_body
+        else:
+            sig_with_colon = sig.strip()
+            if not sig_with_colon.endswith(":"):
+                sig_with_colon += ":"
+            new_func_block = f"{sig_with_colon}\n{formatted_body}"
         
         before = lines[:start_idx]
         after = lines[end_idx:]
