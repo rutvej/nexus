@@ -17,7 +17,7 @@ MODEL_NAME = os.getenv("MODEL_NAME", "qwen2.5-coder:1.5b")
 # Limits & Thresholds
 MAX_RETRIES_PER_TICKET = 3
 MAX_CONSECUTIVE_FAILURES = 5
-TIMEOUT_OLLAMA = 30
+TIMEOUT_OLLAMA = 180
 TIMEOUT_TESTS = 60
 
 # Cloud API Keys (for stubs)

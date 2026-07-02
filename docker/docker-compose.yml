@@ -1,0 +1,31 @@
+version: "3.8"
+services:
+  nexus-agent:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.nexus
+    volumes:
+      - ../workspace:/workspace
+      - ../data:/data
+      - ../src:/app/src
+    environment:
+      - OLLAMA_HOST=http://host.docker.internal:11435
+      - NEXUS_DATA_DIR=/data
+      - NEXUS_WORKSPACE_DIR=/workspace
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+  nexus-sandbox:
+    image: python:3.12-slim
+    network_mode: none
+    mem_limit: 512m
+    cpus: 1
+    volumes:
+      - ../workspace:/workspace:ro
+      - nexus-sandbox-work:/sandbox
+    working_dir: /sandbox
+    profiles: ["sandbox"]
+
+volumes:
+  nexus-sandbox-work:
+

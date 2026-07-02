@@ -1,0 +1,18 @@
+FROM python:3.12-slim
+
+RUN apt-get update && apt-get install -y git && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+COPY pyproject.toml .
+COPY src/ src/
+
+RUN pip install -e .
+
+# Install development/test dependencies so the verifier can format/test code
+RUN pip install pytest pytest-timeout black mypy bandit Flask
+
+# The agent writes code into /workspace (mounted volume)
+VOLUME /workspace
+WORKDIR /workspace
+
+ENTRYPOINT ["python", "-m", "nexus"]

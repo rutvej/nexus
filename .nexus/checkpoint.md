@@ -1,8 +1,8 @@
 # Builder Checkpoint
 
-## Current Phase: 1
-## Current Step: 16
-## Last Successful Action: Built and verified sandbox/docker_runner.py
+## Current Phase: 2
+## Current Step: 4
+## Last Successful Action: Built Nexus Agent Docker image successfully
 ## Nexus Agent Status: stopped
 
 ## Experiment Log
@@ -25,6 +25,11 @@
 | 2026-07-02T04:56:50Z | Built agent/manager.py | PASS | Verified with tests/test_agent_manager.py |
 | 2026-07-02T04:57:03Z | Built tickets/escalation.py | PASS | Verified with tests/test_tickets_escalation.py |
 | 2026-07-02T04:57:18Z | Built sandbox/docker_runner.py | PASS | Verified with tests/test_sandbox_docker_runner.py |
+| 2026-07-02T04:57:38Z | Built cli/app.py & __main__.py | PASS | Verified all 43 tests pass |
+| 2026-07-02T04:58:07Z | Built docker/Dockerfile.nexus | PASS | |
+| 2026-07-02T04:58:11Z | Built docker/docker-compose.yml | PASS | |
+| 2026-07-02T04:59:44Z | Pulled and verified qwen2.5-coder:1.5b | PASS | |
+| 2026-07-02T05:00:51Z | Built docker images | PASS | |
 
 ## Agent Modifications Log
 
@@ -33,4 +38,4 @@
 
 ## Known Issues (Unresolved)
 
-- [ ] Build __main__.py
+- [ ] Run experiment scaffold (Phase 7 Step 1)
