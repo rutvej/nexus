@@ -11,5 +11,5 @@ def test_config_paths():
 def test_config_defaults():
     assert config.MAX_RETRIES_PER_TICKET == 3
     assert config.MAX_CONSECUTIVE_FAILURES == 5
-    assert config.TIMEOUT_OLLAMA == 30
+    assert config.TIMEOUT_OLLAMA == 180
     assert config.TIMEOUT_TESTS == 60

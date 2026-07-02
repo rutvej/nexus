@@ -75,22 +75,27 @@ class Manager:
         if not response.success:
             raise RuntimeError(f"Manager decomposition failed: {response.error}")
             
+        def _to_str(val) -> str:
+            if isinstance(val, list):
+                return ", ".join(str(item) for item in val)
+            return str(val) if val is not None else ""
+
         ticket_dicts = self.parse_tickets(response.text)
         created_tickets = []
         
         for d in ticket_dicts:
             t = Ticket(
-                id=d.get("id", ""),
+                id=_to_str(d.get("id", "")),
                 type=TicketType(d.get("type", "create_file")),
-                title=d.get("title", ""),
+                title=_to_str(d.get("title", "")),
                 status=TicketStatus.BACKLOG,
-                target_file=d.get("target_file", ""),
-                function_signature=d.get("function_signature", ""),
-                parameters=d.get("parameters", ""),
-                return_type=d.get("return_type", ""),
-                dependencies=d.get("dependencies", ""),
+                target_file=_to_str(d.get("target_file", "")),
+                function_signature=_to_str(d.get("function_signature", "")),
+                parameters=_to_str(d.get("parameters", "")),
+                return_type=_to_str(d.get("return_type", "")),
+                dependencies=_to_str(d.get("dependencies", "")),
                 related_interfaces="",
-                description=d.get("description", ""),
+                description=_to_str(d.get("description", "")),
                 depends_on=d.get("depends_on", []),
                 epic="Epic"
             )
