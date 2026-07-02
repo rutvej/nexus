@@ -1,0 +1,48 @@
+import subprocess
+import time
+from pathlib import Path
+from nexus import config
+
+class GitOperations:
+    def __init__(self, repo_path: str = None):
+        self.repo_path = Path(repo_path or config.WORKSPACE_DIR)
+
+    def _run_git(self, args: list[str]) -> str:
+        res = subprocess.run(
+            ["git"] + args,
+            cwd=self.repo_path,
+            capture_output=True,
+            text=True
+        )
+        if res.returncode != 0:
+            raise RuntimeError(f"Git command failed: git {' '.join(args)}\nStdout: {res.stdout}\nStderr: {res.stderr}")
+        return res.stdout.strip()
+
+    def get_current_head_hash(self) -> str:
+        try:
+            return self._run_git(["rev-parse", "HEAD"])
+        except Exception:
+            return ""
+
+    def create_checkpoint_tag(self) -> str:
+        timestamp = int(time.time())
+        tag_name = f"checkpoint-{timestamp}"
+        self._run_git(["tag", tag_name])
+        return tag_name
+
+    def commit_ticket_changes(self, ticket_id: str, ticket_title: str) -> str:
+        # 1. Add all changed files under repo_path
+        self._run_git(["add", "."])
+        # 2. Commit with author info to bypass global config missing errors in tests/containers
+        self._run_git([
+            "commit",
+            "-m", f"{ticket_id}: {ticket_title}",
+            "--author=Gemini Flash <gemini@nexus.local>"
+        ])
+        return self.get_current_head_hash()
+
+    def rollback_changes(self):
+        # Discard unstaged changes
+        self._run_git(["checkout", "."])
+        # Clean untracked files
+        self._run_git(["clean", "-fd"])
