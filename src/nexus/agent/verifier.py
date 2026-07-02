@@ -28,6 +28,20 @@ class Verifier:
         except Exception as e:
             return False, f"Error parsing {file_path}: {e}"
 
+    def verify_importable(self, file_path: str) -> Tuple[bool, str]:
+        """
+        Attempts to import the file as a module within the workspace to verify it has no runtime import errors.
+        """
+        if not file_path.endswith(".py"):
+            return True, ""
+            
+        module_path = file_path.replace("\\", "/").replace(".py", "").replace("/", ".")
+        cmd = [sys.executable, "-c", f"import sys; sys.path.insert(0, '{self.workspace_dir}'); import {module_path}"]
+        code, out, err = self.runner.run_command(cmd, timeout=10)
+        if code != 0:
+            return False, f"ImportError or execution error during module import:\n{out}\n{err}"
+        return True, ""
+
     def auto_format(self, file_path: str) -> bool:
         """
         Runs black on the file to auto-format it.

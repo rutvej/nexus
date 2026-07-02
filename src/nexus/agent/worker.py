@@ -22,12 +22,21 @@ class Worker:
         # Look for ```python ... ```
         match = re.search(r"```python\s*(.*?)\s*```", cleaned, re.DOTALL)
         if match:
-            return match.group(1).strip()
-        
-        # Look for ``` ... ```
-        match = re.search(r"```\s*(.*?)\s*```", cleaned, re.DOTALL)
-        if match:
-            return match.group(1).strip()
+            cleaned = match.group(1).strip()
+        else:
+            # Look for ``` ... ```
+            match = re.search(r"```\s*(.*?)\s*```", cleaned, re.DOTALL)
+            if match:
+                cleaned = match.group(1).strip()
+            
+        # Strip leftover ticket ID markers (e.g. lines starting with TKT- or # TKT-)
+        lines = []
+        for line in cleaned.splitlines():
+            stripped = line.strip()
+            if re.match(r"^#?\s*TKT-\d+(?:\s|:|$)", stripped, re.IGNORECASE):
+                continue
+            lines.append(line)
+        cleaned = "\n".join(lines).strip()
             
         return cleaned
 
@@ -51,7 +60,7 @@ class Worker:
                 function_signature=ticket.function_signature,
                 description=ticket.description,
                 return_type=ticket.return_type,
-                target_file=ticket.target_file
+                target_file=ticket.dependencies
             )
         elif ticket.type == TicketType.FIX_BUG:
             prompt = FIX_BUG_PROMPT.format(
@@ -75,7 +84,12 @@ class Worker:
         full_path = os.path.join(self.workspace_dir, ticket.target_file)
         os.makedirs(os.path.dirname(full_path), exist_ok=True)
         
-        if ticket.type == TicketType.WRITE_FUNCTION:
+        # Fallback: if CREATE_FILE targets an existing file and has a function signature, treat it as WRITE_FUNCTION
+        ticket_type = ticket.type
+        if ticket_type == TicketType.CREATE_FILE and os.path.exists(full_path) and ticket.function_signature:
+            ticket_type = TicketType.WRITE_FUNCTION
+
+        if ticket_type == TicketType.WRITE_FUNCTION:
             # If function ticket, write signature + body or prepend dependencies if file empty
             func_name_match = re.search(r"def\s+(\w+)\s*\(", ticket.function_signature)
             has_signature = False
@@ -87,7 +101,23 @@ class Worker:
             with open(full_path, "a" if os.path.exists(full_path) else "w", encoding="utf-8") as f:
                 # Add imports if creating new file
                 if f.tell() == 0 and ticket.dependencies:
-                    f.write(ticket.dependencies + "\n\n")
+                    # Sanitize to ensure it's not a ticket ID hallucinated by the model
+                    deps = ticket.dependencies.strip()
+                    parts = re.split(r"[,;\n]", deps)
+                    valid_deps = []
+                    for part in parts:
+                        part = part.strip()
+                        if not part:
+                            continue
+                        if re.match(r"^TKT-\d+", part, re.IGNORECASE):
+                            continue
+                        if part.startswith("import ") or part.startswith("from "):
+                            valid_deps.append(part)
+                        else:
+                            # Try to prefix with import
+                            valid_deps.append(f"import {part}")
+                    if valid_deps:
+                        f.write("\n".join(valid_deps) + "\n\n")
                 
                 if has_signature:
                     f.write(f"\n{code}\n")
@@ -105,7 +135,7 @@ class Worker:
                         else:
                             indented_code += line + "\n"
                     f.write(indented_code + "\n")
-        elif ticket.type == TicketType.FIX_BUG:
+        elif ticket_type == TicketType.FIX_BUG:
             # Modify/replace the function in the existing file rather than wiping the whole file
             if os.path.exists(full_path):
                 with open(full_path, "r", encoding="utf-8") as f:

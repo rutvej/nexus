@@ -10,6 +10,9 @@ def test_worker_extract_code():
     assert w.extract_code("```python\nprint(1)\n```") == "print(1)"
     assert w.extract_code("```\nprint(2)\n```") == "print(2)"
     assert w.extract_code("print(3)") == "print(3)"
+    assert w.extract_code("TKT-004\nprint(4)") == "print(4)"
+    assert w.extract_code("# TKT-004: Write something\nprint(5)") == "print(5)"
+    assert w.extract_code("```python\nTKT-003: dummy\ndef get_timeline():\n    return []\n```") == "def get_timeline():\n    return []"
 
 def test_worker_execute_ticket():
     with tempfile.TemporaryDirectory() as tmpdir:
@@ -45,6 +48,25 @@ def test_worker_execute_ticket():
         assert "import sys" in content
         assert "def add(a, b):" in content
         assert "return a + b" in content
+
+        # Now test that hallucinated ticket ID dependencies are stripped
+        t_hallucinated = Ticket(
+            id="T-2",
+            type=TicketType.WRITE_FUNCTION,
+            title="Write add 2",
+            status=TicketStatus.BACKLOG,
+            target_file="math_lib_2.py",
+            function_signature="def add2(a, b)",
+            dependencies="TKT-001",
+            description="Add two values 2"
+        )
+        ok = w.execute_ticket(t_hallucinated)
+        assert ok is True
+        file_path_2 = os.path.join(tmpdir, "math_lib_2.py")
+        with open(file_path_2, "r") as f:
+            content_2 = f.read()
+        assert "TKT-001" not in content_2
+        assert "def add2(a, b):" in content_2
 
 def test_worker_fix_bug():
     with tempfile.TemporaryDirectory() as tmpdir:

@@ -29,11 +29,39 @@ class Engine:
         Runs the main loop to build the requested project spec.
         Returns a summary string of the execution results.
         """
-        # Step 1: Decompose feature request into tickets
-        try:
-            self.manager.decompose_feature(project_spec)
-        except Exception as e:
-            return f"Decomposition failed: {e}"
+        # Step 1: Decompose feature request into tickets if queue is empty
+        if not self.queue.list_all():
+            try:
+                self.manager.decompose_feature(project_spec)
+                # Auto-generate WRITE_TEST tickets for each WRITE_FUNCTION ticket
+                all_tickets = self.queue.list_all()
+                test_tickets = []
+                for t in all_tickets:
+                    if t.type in (TicketType.WRITE_FUNCTION, TicketType.CREATE_FILE) and t.function_signature:
+                        base_name = os.path.basename(t.target_file)
+                        test_file = f"tests/test_{base_name}"
+                        module_path = t.target_file.replace("\\", "/").replace(".py", "").replace("/", ".")
+                        
+                        test_ticket = Ticket(
+                            id=f"{t.id}-TEST",
+                            type=TicketType.WRITE_TEST,
+                            title=f"Test for {t.title}",
+                            status=TicketStatus.BACKLOG,
+                            target_file=test_file,
+                            function_signature=t.function_signature,
+                            parameters=t.parameters,
+                            return_type=t.return_type,
+                            dependencies=module_path,
+                            related_interfaces=t.related_interfaces,
+                            description=f"Write pytest tests for {t.function_signature}",
+                            depends_on=[t.id],
+                            epic=t.epic
+                        )
+                        test_tickets.append(test_ticket)
+                for tt in test_tickets:
+                    self.queue.add_ticket(tt)
+            except Exception as e:
+                return f"Decomposition failed: {e}"
 
         steps = 0
         while steps < max_steps:
@@ -44,6 +72,8 @@ class Engine:
 
             ticket.status = TicketStatus.IN_PROGRESS
             ticket.git_hash_before = self.git.get_current_head_hash()
+            # Dynamically populate related_interfaces from current registry
+            ticket.related_interfaces = self.registry.get_related_interfaces(ticket.target_file)[:500]
             self.queue.update_ticket(ticket)
 
             # Let worker generate code
@@ -52,6 +82,11 @@ class Engine:
             if worker_success:
                 # Run verifications: AST parsing & test suite
                 syntax_ok, syntax_err = self.verifier.verify_syntax(ticket.target_file)
+                if syntax_ok:
+                    import_ok, import_err = self.verifier.verify_importable(ticket.target_file)
+                    if not import_ok:
+                        syntax_ok = False
+                        syntax_err = f"Module import/runtime error:\n{import_err}"
                 if syntax_ok:
                     # Pre-format code
                     self.verifier.auto_format(ticket.target_file)

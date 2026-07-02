@@ -19,7 +19,9 @@ The function should:
 Related interfaces you may call:
 {related_interfaces}
 
-Write ONLY the function body. No imports, no tests, no comments outside the function."""
+CRITICAL RULES:
+- Use ONLY the Python standard library (e.g. sqlite3) and Flask. Do NOT import or use SQLAlchemy, Django, or any other third-party ORMs/libraries.
+- Write ONLY the function body. No imports, no tests, no comments outside the function."""
 
 WRITE_TEST_PROMPT = """Write a pytest test function for:
 
@@ -46,7 +48,9 @@ Error traceback:
 The function should:
 {description}
 
-Write ONLY the corrected function body. No imports, no tests."""
+CRITICAL RULES:
+- Use ONLY the Python standard library (e.g. sqlite3) and Flask. Do NOT import or use SQLAlchemy, Django, or any other third-party ORMs/libraries.
+- Write ONLY the corrected function body. No imports, no tests."""
 
 def validate_ticket(ticket: Ticket) -> tuple[bool, str]:
     """

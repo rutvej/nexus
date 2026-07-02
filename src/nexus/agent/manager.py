@@ -8,7 +8,6 @@ from nexus.llm.router import ModelRouter
 
 DECOMPOSE_PROMPT_TEMPLATE = """You are the Project Manager. Your job is to decompose the following user feature request into a sequence of small, self-contained development tickets.
 Each ticket must be 1 Story Point (completability: <= 1 function or test, context <= 500 tokens).
-Important: Always write a test ticket immediately after a write_function or create_file ticket to verify it.
 
 PROJECT GUIDE:
 {project_guide}
@@ -18,15 +17,46 @@ FEATURE REQUEST:
 
 You must output a JSON list of ticket objects. Each ticket object must have exactly these keys:
 - "id": A unique identifier (e.g. "TKT-001", "TKT-002")
-- "type": One of: "create_file", "write_function", "write_test", "run_tests", "fix_bug", "integration_test"
+- "type": One of: "create_file", "write_function"
 - "title": A short title (e.g. "Write function create_user")
 - "target_file": The file path to modify or create (e.g. "src/models/user.py")
-- "function_signature": The python function signature, if type is "write_function" (otherwise empty)
-- "parameters": The parameters, if type is "write_function" (otherwise empty)
-- "return_type": The return type description, if type is "write_function" (otherwise empty)
-- "dependencies": The standard library modules to import/depend on
+- "function_signature": The python function signature (e.g. "def create_user(username: str) -> None:")
+- "parameters": The parameters (e.g. "username: str")
+- "return_type": The return type description (e.g. "None")
+- "dependencies": The Python module import statements (e.g. "import math" or "from src.models.user import User")
 - "description": A 1-2 sentence description of what the function/file should do
 - "depends_on": A list of IDs of other tickets this ticket depends on (e.g. ["TKT-001"])
+
+EXAMPLE FEATURE REQUEST:
+Create a circle area calculator: 1. Calculate area. 2. CLI wrapper.
+
+EXAMPLE OUTPUT:
+[
+  {{
+    "id": "TKT-001",
+    "type": "create_file",
+    "title": "Write function calculate_area",
+    "target_file": "src/area.py",
+    "function_signature": "def calculate_area(radius: float) -> float:",
+    "parameters": "radius: float",
+    "return_type": "float",
+    "dependencies": "import math",
+    "description": "Calculate the area of a circle given its radius using math.pi.",
+    "depends_on": []
+  }},
+  {{
+    "id": "TKT-002",
+    "type": "create_file",
+    "title": "Write function run_cli",
+    "target_file": "src/cli.py",
+    "function_signature": "def run_cli() -> None:",
+    "parameters": "",
+    "return_type": "None",
+    "dependencies": "import sys, from src.area import calculate_area",
+    "description": "Read radius from args, call calculate_area, and print result.",
+    "depends_on": ["TKT-001"]
+  }}
+]
 
 Output ONLY the raw JSON list, starting with [ and ending with ]. Do not wrap it in markdown. Do not write any explanations outside the JSON.
 """
@@ -92,7 +122,7 @@ class Manager:
                 parameters=_to_str(d.get("parameters", "")),
                 return_type=_to_str(d.get("return_type", "")),
                 dependencies=_to_str(d.get("dependencies", "")),
-                related_interfaces="",
+                related_interfaces=self.guide.get_section("Interface Registry")[:500],
                 description=_to_str(d.get("description", "")),
                 depends_on=d.get("depends_on", []),
                 epic="Epic"

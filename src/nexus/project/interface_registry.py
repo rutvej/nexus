@@ -50,7 +50,8 @@ class InterfaceRegistry:
             if file_path == current_file:
                 continue
             if items:
-                lines.append(f"### {file_path}")
+                mod_path = file_path.replace("\\", "/").replace(".py", "").replace("/", ".")
+                lines.append(f"### {file_path} (Import path: {mod_path})")
                 for item in items:
                     lines.append(f"- `{item['signature']}` — {item['description']}")
         return "\n".join(lines)
