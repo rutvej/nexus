@@ -45,8 +45,15 @@ class Worker:
         Generates code for the ticket and writes it to the target file.
         Returns True if successful, False on failure.
         """
+        full_path = os.path.join(self.workspace_dir, ticket.target_file)
+        
+        # Fallback: if CREATE_FILE has a function signature, treat it as WRITE_FUNCTION
+        ticket_type = ticket.type
+        if ticket_type == TicketType.CREATE_FILE and ticket.function_signature:
+            ticket_type = TicketType.WRITE_FUNCTION
+
         # Determine prompt based on ticket type
-        if ticket.type == TicketType.WRITE_FUNCTION:
+        if ticket_type == TicketType.WRITE_FUNCTION:
             prompt = WRITE_FUNCTION_PROMPT.format(
                 function_signature=ticket.function_signature,
                 parameters=ticket.parameters,
@@ -55,22 +62,27 @@ class Worker:
                 description=ticket.description,
                 related_interfaces=ticket.related_interfaces
             )
-        elif ticket.type == TicketType.WRITE_TEST:
+        elif ticket_type == TicketType.WRITE_TEST:
             prompt = WRITE_TEST_PROMPT.format(
                 function_signature=ticket.function_signature,
                 description=ticket.description,
                 return_type=ticket.return_type,
                 target_file=ticket.dependencies
             )
-        elif ticket.type == TicketType.FIX_BUG:
+        elif ticket_type == TicketType.FIX_BUG:
             prompt = FIX_BUG_PROMPT.format(
                 function_signature=ticket.function_signature,
                 error_log=ticket.error_log,
                 description=ticket.description
             )
         else:
-            # For CREATE_FILE or others, use a simple generic prompt
-            prompt = f"Create file {ticket.target_file}. Description: {ticket.description}. Output ONLY pure Python code."
+            # For CREATE_FILE or others, use a simple generic prompt with critical rules
+            prompt = (
+                f"Create file {ticket.target_file}. Description: {ticket.description}.\n"
+                "CRITICAL RULES:\n"
+                "- Use ONLY the Python standard library and Flask. Do NOT import or use SQLAlchemy, Django, or other third-party ORMs/libraries.\n"
+                "- Output ONLY pure, executable Python code. No markdown, no explanations."
+            )
 
         response = self.router.route_and_generate(prompt, ticket)
         if not response.success:
@@ -81,13 +93,7 @@ class Worker:
         code = self.extract_code(response.text)
         
         # Write code to file
-        full_path = os.path.join(self.workspace_dir, ticket.target_file)
         os.makedirs(os.path.dirname(full_path), exist_ok=True)
-        
-        # Fallback: if CREATE_FILE targets an existing file and has a function signature, treat it as WRITE_FUNCTION
-        ticket_type = ticket.type
-        if ticket_type == TicketType.CREATE_FILE and os.path.exists(full_path) and ticket.function_signature:
-            ticket_type = TicketType.WRITE_FUNCTION
 
         if ticket_type == TicketType.WRITE_FUNCTION:
             # If function ticket, write signature + body or prepend dependencies if file empty
