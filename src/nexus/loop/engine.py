@@ -87,6 +87,11 @@ class Engine:
                     if not import_ok:
                         syntax_ok = False
                         syntax_err = f"Module import/runtime error:\n{import_err}"
+                    else:
+                        names_ok, names_err = self.verifier.verify_undefined_names(ticket.target_file)
+                        if not names_ok:
+                            syntax_ok = False
+                            syntax_err = f"Static analysis check failed:\n{names_err}"
                 if syntax_ok:
                     # Pre-format code
                     self.verifier.auto_format(ticket.target_file)

@@ -73,7 +73,7 @@ def test_engine_test_ticket_generation():
                 "id": "TKT-01",
                 "type": "write_function",
                 "title": "Write add",
-                "target_file": "math.py",
+                "target_file": "addition.py",
                 "function_signature": "def add(a, b)",
                 "parameters": "a, b",
                 "return_type": "int",
@@ -85,7 +85,7 @@ def test_engine_test_ticket_generation():
         router.route_and_generate.side_effect = [
             LLMResponse(text=json_output, model="mock", tokens_used=50, latency_ms=10.0, success=True),
             LLMResponse(text="def add(a, b):\n    return a + b\n", model="mock", tokens_used=10, latency_ms=10.0, success=True),
-            LLMResponse(text="def test_add():\n    assert add(1, 2) == 3\n", model="mock", tokens_used=10, latency_ms=10.0, success=True)
+            LLMResponse(text="from addition import add\n\ndef test_add():\n    assert add(1, 2) == 3\n", model="mock", tokens_used=10, latency_ms=10.0, success=True)
         ]
 
         engine = Engine(router, workspace_dir=tmpdir, db_path=":memory:")
@@ -95,6 +95,6 @@ def test_engine_test_ticket_generation():
         assert "Completed 2/2" in summary
         
         # Verify both files are created
-        assert os.path.exists(os.path.join(tmpdir, "math.py"))
-        assert os.path.exists(os.path.join(tmpdir, "tests/test_math.py"))
+        assert os.path.exists(os.path.join(tmpdir, "addition.py"))
+        assert os.path.exists(os.path.join(tmpdir, "tests/test_addition.py"))
 

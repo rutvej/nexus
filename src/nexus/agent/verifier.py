@@ -42,6 +42,29 @@ class Verifier:
             return False, f"ImportError or execution error during module import:\n{out}\n{err}"
         return True, ""
 
+    def verify_undefined_names(self, file_path: str) -> Tuple[bool, str]:
+        """
+        Runs mypy on the file to check for any undefined names statically.
+        """
+        if not file_path.endswith(".py"):
+            return True, ""
+            
+        # Absolute path in workspace
+        full_path = os.path.join(self.workspace_dir, file_path)
+        cmd = [sys.executable, "-m", "mypy", "--check-untyped-defs", "--ignore-missing-imports", full_path]
+        code, out, err = self.runner.run_command(cmd, timeout=15)
+        
+        undefined_errors = []
+        for line in out.splitlines():
+            if "[name-defined]" in line:
+                # Remove absolute workspace path from line for clean logging
+                clean_line = line.replace(self.workspace_dir, "").strip("/\\")
+                undefined_errors.append(clean_line)
+                
+        if undefined_errors:
+            return False, "Undefined names found:\n" + "\n".join(undefined_errors)
+        return True, ""
+
     def auto_format(self, file_path: str) -> bool:
         """
         Runs black on the file to auto-format it.

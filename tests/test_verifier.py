@@ -47,3 +47,24 @@ def test_verifier_verify_importable():
         assert ok is False
         assert "ImportError" in err
 
+
+def test_verifier_verify_undefined_names():
+    with tempfile.TemporaryDirectory() as tmpdir:
+        verifier = Verifier(tmpdir)
+        
+        # Valid python (no undefined names)
+        file_path = "valid.py"
+        with open(os.path.join(tmpdir, file_path), "w") as f:
+            f.write("def foo():\n    return 42\n")
+        ok, err = verifier.verify_undefined_names(file_path)
+        assert ok is True
+        
+        # Invalid python (has undefined name)
+        bad_file = "bad.py"
+        with open(os.path.join(tmpdir, bad_file), "w") as f:
+            f.write("def foo():\n    return datetime.now()\n")
+        ok, err = verifier.verify_undefined_names(bad_file)
+        assert ok is False
+        assert "Name \"datetime\" is not defined" in err
+
+
