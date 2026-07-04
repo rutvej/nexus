@@ -112,7 +112,23 @@ class Worker:
             if os.path.exists(full_path):
                 with open(full_path, "r", encoding="utf-8") as f:
                     existing_content = f.read()
-                code = self._deduplicate_code(existing_content, code)
+                
+                # Check if the target function is already defined in existing_content
+                func_name_match = re.search(r"def\s+(\w+)\s*\(", ticket.function_signature)
+                is_already_defined = False
+                if func_name_match:
+                    func_name = func_name_match.group(1)
+                    if re.search(r"\bdef\s+" + re.escape(func_name) + r"\b", existing_content):
+                        is_already_defined = True
+                
+                if is_already_defined:
+                    # Replace in-place instead of appending!
+                    updated_code = self._replace_function_in_code(existing_content, ticket.function_signature, code)
+                    with open(full_path, "w", encoding="utf-8") as f:
+                        f.write(updated_code)
+                    return True
+                else:
+                    code = self._deduplicate_code(existing_content, code)
 
             # If function ticket, write signature + body or prepend dependencies if file empty
             func_name_match = re.search(r"def\s+(\w+)\s*\(", ticket.function_signature)
