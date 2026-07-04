@@ -110,6 +110,13 @@ class GitOperations:
         return self.get_current_head_hash()
 
     def rollback_changes(self):
+        # If there is no commit history yet, checkout will fail. Just clean untracked files.
+        if not self.get_current_head_hash():
+            try:
+                self._run_git(["clean", "-fd"])
+            except Exception:
+                pass
+            return
         # Discard unstaged changes
         self._run_git(["checkout", "."])
         # Clean untracked files
