@@ -38,10 +38,10 @@ Expected return type:
 CRITICAL RULES:
 - You MUST import the function under test from {target_file} (e.g. `from {target_file} import ...`).
 - Do NOT redefine, copy, or mock the function you are testing. You must test the actual implementation.
-- If testing database functions, remember they use SQLite and write to the database file (e.g. `users.db` or `tweets.db`). Do not mock sqlite3.
-- ALWAYS write setup/teardown code in your test to initialize the tables, clear existing rows, or insert required test data so that tests are isolated, repeatable, and do not fail on duplicate/missing records.
-- Write exactly ONE test function. Include at least 3 assertions with different inputs.
-- Output ONLY the test function and its imports. No implementation of the function under test, no example usages, no markdown/comments outside of the code block."""
+- Do NOT use @pytest.fixture or any pytest fixtures. Put ALL setup and teardown code DIRECTLY INSIDE the test function body.
+- If testing database functions: they use SQLite and write to a .db file (e.g. `users.db` or `tweets.db`). At the START of your test function, delete the .db file if it exists using `import os; os.remove('users.db') if os.path.exists('users.db') else None` to ensure a clean state.
+- Write exactly ONE test function named `test_<function_name>`. Include at least 3 assertions.
+- Output ONLY the test function and its imports. No fixtures, no classes, no markdown."""
 
 FIX_BUG_PROMPT = """Fix this Python function. The test failed with this error:
 
