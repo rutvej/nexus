@@ -40,6 +40,7 @@ CRITICAL RULES:
 - Do NOT redefine, copy, or mock the function you are testing. You must test the actual implementation.
 - Do NOT use @pytest.fixture or any pytest fixtures. Put ALL setup and teardown code DIRECTLY INSIDE the test function body.
 - If testing database functions: they use SQLite and write to a .db file (e.g. `users.db` or `tweets.db`). At the START of your test function, delete the .db file if it exists using `import os; os.remove('users.db') if os.path.exists('users.db') else None` to ensure a clean state.
+- If testing database query/getter functions (like view_timeline or login_user): you MUST first insert mock test data (e.g., insert users or tweets) into the database at the start of your test so that the query function has records to retrieve and does not return empty results.
 - Write exactly ONE test function named `test_<function_name>`. Include at least 3 assertions.
 - Output ONLY the test function and its imports. No fixtures, no classes, no markdown."""
 
