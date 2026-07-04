@@ -38,7 +38,8 @@ Expected return type:
 CRITICAL RULES:
 - You MUST import the function under test from {target_file} (e.g. `from {target_file} import ...`).
 - Do NOT redefine, copy, or mock the function you are testing. You must test the actual implementation.
-- If testing database functions, remember they use SQLite and write to the database file (e.g. `users.db`). Do not mock sqlite3.
+- If testing database functions, remember they use SQLite and write to the database file (e.g. `users.db` or `tweets.db`). Do not mock sqlite3.
+- ALWAYS write setup/teardown code in your test to initialize the tables, clear existing rows, or insert required test data so that tests are isolated, repeatable, and do not fail on duplicate/missing records.
 - Write exactly ONE test function. Include at least 3 assertions with different inputs.
 - Output ONLY the test function and its imports. No implementation of the function under test, no example usages, no markdown/comments outside of the code block."""
 
