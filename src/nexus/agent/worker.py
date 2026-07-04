@@ -273,10 +273,12 @@ class Worker:
                 needed_imports.append(f"from flask import {', '.join(flask_funcs)}")
 
         # Check if project model classes are used but not imported (common in views/timeline)
-        if re.search(r"\bUser\b", code) and "from src.models.user" not in code and "import User" not in code:
-            needed_imports.append("from src.models.user import User")
-        if re.search(r"\bTweet\b", code) and "from src.models.tweet" not in code and "import Tweet" not in code:
-            needed_imports.append("from src.models.tweet import Tweet")
+        if re.search(r"\bUser\b", code):
+            if not re.search(r"\bimport\s+User\b", code) and not re.search(r"\bfrom\s+\S+\s+import\s+[^#\n]*\bUser\b", code):
+                needed_imports.append("from src.models.user import User")
+        if re.search(r"\bTweet\b", code):
+            if not re.search(r"\bimport\s+Tweet\b", code) and not re.search(r"\bfrom\s+\S+\s+import\s+[^#\n]*\bTweet\b", code):
+                needed_imports.append("from src.models.tweet import Tweet")
             
         # Only add imports that aren't already present in code
         new_imports = []
@@ -286,8 +288,8 @@ class Worker:
                 if not re.search(r"\bimport\s+" + re.escape(module) + r"\b", code):
                     new_imports.append(imp)
             elif imp.startswith("from "):
-                module = imp.split()[1]
-                if not re.search(r"\bfrom\s+" + re.escape(module) + r"\s+import\b", code) and not re.search(r"\bimport\s+" + re.escape(module) + r"\b", code):
+                imported_name = imp.split()[-1]
+                if not re.search(r"\bfrom\s+\S+\s+import\s+[^#\n]*\b" + re.escape(imported_name) + r"\b", code):
                     new_imports.append(imp)
                     
         if new_imports:
