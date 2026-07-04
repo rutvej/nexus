@@ -1,145 +1,166 @@
-# Phase 3 Review — Opus Analysis
+# Phase 3.1 — Continuation Prompt
 
-## Verdict: The AGENT is general-purpose ✅ — but Flash is confused about what to do next
+## What's Done
+- Nexus agent source code is **100% general-purpose** (zero hardcoded app references)
+- Verification pipeline: `syntax → importable → mypy undefined names → black format → pytest`
+- Auto-generated WRITE_TEST tickets (no reliance on 1.5B model for test planning)
+- Prompt templates enforce: stdlib+Flask only, `CREATE TABLE IF NOT EXISTS`, include typing/datetime imports
+- All 36 unit tests pass, pushed to `nexus/experiment-001`
 
-Let me be very clear about what's happening:
+## What Failed (2 Experiment Runs)
+Both runs: **3/8 tickets completed, 4 escalated.** Same failure modes:
 
-### What's Actually Going On
+| Failure | Count | Root Cause |
+|---------|-------|------------|
+| Functions return `None` instead of objects | 2 | Model doesn't reliably write `return` statements |
+| `NameError: List not defined` | 1 | Model uses `List[Tweet]` without importing `typing` |
+| Duplicate class declarations in same file | 2 | Worker appends code blindly, re-declaring imports + classes |
+| `TypeError: missing positional argument` | 1 | Second class declaration has different `__init__` signature |
 
-1. **The Nexus agent source code (`src/nexus/`) IS general-purpose.** Zero Twitter references. I grep'd it. Clean.
-2. **The Docker experiment DID run.** Nexus received the Twitter clone spec, the sub-3B model (`qwen2.5-coder:1.5b`) decomposed it into 4 tickets, and 3/4 completed successfully.
-3. **Flash (conversation 330d) is NOT rebuilding a Twitter agent** — it's monitoring the Nexus experiment output and trying to fix the one ESCALATED ticket (TKT-004: `get_timeline`).
+## The 3 Fixes To Apply (In Order)
 
-So the agent itself is fine. The problem is the **experiment results reveal real bugs in how Nexus handles sub-3B model output**.
+### Fix 1: Smart File Merge in Worker (CRITICAL — Bug Fix)
 
----
+The Worker's `WRITE_FUNCTION` append mode blindly concatenates code. When `create_user` and `login_user` both target `src/models/user.py`, the second append re-declares `import sqlite3` and `class User` with a different `__init__` signature, breaking the first function.
 
-## Experiment Results Analysis
-
-### What Nexus Produced (workspace/)
-
-| File | Content | Quality |
-|------|---------|---------|
-| `src/models/user.py` | `create_user()` + `login_user()` | ⚠️ Bad — uses SQLAlchemy (not in deps), `login_user` calls non-existent `authenticate_user()` and `get_user_by_username()` |
-| `src/models/tweet.py` | `Tweet` class + `create_tweet()` | ⚠️ OK-ish — no persistence, just creates in-memory object |
-| `src/views/timeline.py` | `get_timeline()` | ❌ ESCALATED — model hallucinated ticket ID `TKT-003` as raw text into the code |
-
-### Root Causes
-
-| # | Bug | Where | Impact |
-|---|-----|-------|--------|
-| **1** | **Model hallucinates ticket IDs into code** | The `dependencies` field on TKT-004 was literally `"TKT-003"` (a ticket reference, not a Python import). The worker wrote `TKT-003` as a line of code. | `SyntaxError: leading zeros in decimal integer literals` |
-| **2** | **No test tickets generated** | The Manager prompt says "Always write a test ticket" but the sub-3B model only generated 4 WRITE_FUNCTION tickets with zero WRITE_TEST tickets. | No verification possible |
-| **3** | **Model imports non-existent modules** | `user.py` line 27: `from .models import User` — the model hallucinated a relative import that doesn't exist | ImportError at runtime |
-| **4** | **Model uses libraries not in the spec** | `user.py` uses `sqlalchemy` — the spec said "Use SQLite" but the model chose SQLAlchemy ORM which isn't installed | ImportError |
-| **5** | **Interface registry not used in decomposition** | `related_interfaces` is always `""` on every ticket, so the model doesn't know what functions already exist when writing dependent code | Functions call non-existent helpers |
-
----
-
-## 5 Fixes Before Re-Running
-
-### Fix 1: Sanitize `dependencies` field in Worker (CRITICAL)
-The model sometimes puts ticket IDs (like `"TKT-003"`) in the dependencies field instead of Python imports. The worker already strips `TKT-` lines from code output, but it doesn't sanitize the `dependencies` field before writing it as an import line.
-
-**In `worker.py` line 98-102:** The existing sanitization is good but needs to also handle comma-separated ticket IDs like `"TKT-001, TKT-002"`.
-
-### Fix 2: Force Manager to generate test tickets
-The decomposition prompt asks for test tickets but the 1.5B model ignores this. Two options:
-- **Option A (simpler):** After Manager generates tickets, the Engine automatically creates a `WRITE_TEST` ticket for every `WRITE_FUNCTION` ticket (deterministic, no LLM needed).
-- **Option B:** Make the prompt more forceful.
-
-**Recommendation:** Option A — don't rely on a 1.5B model to plan properly.
-
-### Fix 3: Populate `related_interfaces` from registry
-In `manager.py` line 95, `related_interfaces` is hardcoded to `""`. The Manager should read the current Interface Registry and populate this field so dependent functions know what's available.
-
-### Fix 4: Restrict imports to stdlib + specified packages
-Add a validation step in the Verifier that checks imports against an allowed list (stdlib + packages listed in the project spec). Reject code that imports `sqlalchemy`, `django`, etc. unless explicitly requested.
-
-### Fix 5: Engine should validate generated code can actually run
-Before marking a ticket DONE, verify that `ast.parse` catches not just syntax errors but also obvious import errors by checking if imported modules exist.
-
----
-
-## Corrective Prompt for Flash (Phase 3.1)
-
-Paste this into your Flash conversation:
-
----
-
-**STOP. Opus has reviewed the Phase 3 results.**
-
-The agent source code is confirmed general-purpose ✅. The problem is the sub-3B model produces messy output that Nexus doesn't handle robustly enough. Here are 3 fixes to apply, then re-run the experiment.
-
-### Fix 1: Auto-generate test tickets in Engine (MOST IMPORTANT)
-
-In `src/nexus/loop/engine.py`, after the Manager decomposes the spec into tickets (line 35), add a post-processing step that automatically creates a `WRITE_TEST` ticket for every `WRITE_FUNCTION` ticket. Do NOT rely on the 1.5B model to generate test tickets — it won't.
+**In `src/nexus/agent/worker.py`**, before appending to an existing file:
+1. Parse the existing file with `ast.parse()` to find all existing import statements, class names, and function names
+2. Parse the new code the same way
+3. Skip any imports that already exist in the file
+4. Skip any class declarations that already exist in the file
+5. Only append new function definitions and truly new imports
 
 ```python
-# After manager.decompose_feature(), add:
-all_tickets = self.queue.list_all()
-test_tickets = []
-for t in all_tickets:
-    if t.type == TicketType.WRITE_FUNCTION and t.function_signature:
-        test_ticket = Ticket(
-            id=f"{t.id}-TEST",
-            type=TicketType.WRITE_TEST,
-            title=f"Test for {t.title}",
-            status=TicketStatus.BACKLOG,
-            target_file=f"tests/test_{os.path.basename(t.target_file)}",
-            function_signature=t.function_signature,
-            parameters=t.parameters,
-            return_type=t.return_type,
-            dependencies=t.dependencies,
-            related_interfaces=t.related_interfaces,
-            description=f"Write pytest tests for {t.function_signature}",
-            depends_on=[t.id],
-            epic=t.epic
-        )
-        test_tickets.append(test_ticket)
-for tt in test_tickets:
-    self.queue.add_ticket(tt)
+def _deduplicate_code(self, existing_content: str, new_code: str) -> str:
+    """Remove from new_code any imports or class defs that already exist in existing_content."""
+    import ast
+    
+    try:
+        existing_tree = ast.parse(existing_content)
+    except SyntaxError:
+        return new_code  # Can't parse, just append as-is
+    
+    # Collect existing names
+    existing_imports = set()
+    existing_classes = set()
+    existing_functions = set()
+    for node in ast.walk(existing_tree):
+        if isinstance(node, ast.Import):
+            for alias in node.names:
+                existing_imports.add(f"import {alias.name}")
+        elif isinstance(node, ast.ImportFrom):
+            existing_imports.add(f"from {node.module}")
+        elif isinstance(node, ast.ClassDef):
+            existing_classes.add(node.name)
+        elif isinstance(node, ast.FunctionDef):
+            existing_functions.add(node.name)
+    
+    # Filter new code line-by-line
+    lines = new_code.splitlines()
+    filtered = []
+    skip_block = False
+    skip_indent = 0
+    
+    for line in lines:
+        stripped = line.strip()
+        
+        # Check if this starts a class we already have
+        class_match = re.match(r'^class\s+(\w+)', stripped)
+        if class_match and class_match.group(1) in existing_classes:
+            skip_block = True
+            skip_indent = len(line) - len(line.lstrip())
+            continue
+            
+        # If we're skipping a class block, skip until dedent
+        if skip_block:
+            if stripped == '' or (len(line) - len(line.lstrip()) > skip_indent):
+                continue
+            else:
+                skip_block = False
+        
+        # Skip duplicate imports
+        if stripped.startswith('import ') and stripped in existing_imports:
+            continue
+        if stripped.startswith('from ') and any(stripped.startswith(ei) for ei in existing_imports):
+            continue
+            
+        filtered.append(line)
+    
+    return '\n'.join(filtered)
 ```
 
-### Fix 2: Populate `related_interfaces` in Manager
+Then call `_deduplicate_code()` in `execute_ticket()` before writing to the file when it already exists.
 
-In `src/nexus/agent/manager.py`, after creating each ticket, populate `related_interfaces` from the Interface Registry:
+### Fix 2: Inject Existing File Content into Prompts
+
+When writing a function to a file that already exists, the model NEEDS to see what's already in the file — especially class definitions it must match.
+
+**In `src/nexus/agent/worker.py`**, when building the `WRITE_FUNCTION` prompt:
+```python
+if os.path.exists(full_path):
+    with open(full_path, "r") as f:
+        existing = f.read()
+    prompt += f"\n\nEXISTING FILE CONTENT (your function must work with this code):\n```python\n{existing}\n```"
+```
+
+### Fix 3: Auto-Fix Common Import Patterns
+
+**In `src/nexus/agent/worker.py`**, add a post-processing step after `extract_code()`:
 
 ```python
-# In decompose_feature(), after creating ticket t:
-t.related_interfaces = self.guide.get_section("Interface Registry")[:500]  # trim to fit context
+def _auto_fix_imports(self, code: str) -> str:
+    """Add missing imports for common patterns the model forgets."""
+    lines = code.splitlines()
+    needed_imports = []
+    
+    code_str = code
+    if 'List[' in code_str or 'Optional[' in code_str or 'Dict[' in code_str or 'Tuple[' in code_str:
+        needed_imports.append('from typing import List, Optional, Dict, Tuple')
+    if 'datetime.' in code_str or 'datetime(' in code_str:
+        needed_imports.append('from datetime import datetime')
+    
+    # Only add imports that aren't already present
+    existing_code = '\n'.join(lines)
+    new_imports = [imp for imp in needed_imports if imp not in existing_code]
+    
+    if new_imports:
+        return '\n'.join(new_imports) + '\n\n' + code
+    return code
 ```
 
-Also add the Interface Registry content to the DECOMPOSE_PROMPT_TEMPLATE:
+## After Applying Fixes
+```bash
+# 1. Run unit tests
+./venv/bin/pytest
+
+# 2. Clean workspace
+rm -rf /home/rutvej/nexus/workspace/src /home/rutvej/nexus/workspace/tests
+rm -f /home/rutvej/nexus/data/session.db data/session.db-shm data/session.db-wal
+
+# 3. Rebuild Docker
+docker build -t nexus-agent -f docker/Dockerfile.nexus .
+
+# 4. Re-run experiment
+docker run --rm -u 1000:1000 \
+  -v /home/rutvej/nexus/workspace:/workspace \
+  -v /home/rutvej/nexus/data:/data \
+  --add-host host.docker.internal:host-gateway \
+  -e OLLAMA_HOST=http://host.docker.internal:11435 \
+  -e NEXUS_DATA_DIR=/data \
+  -e NEXUS_WORKSPACE_DIR=/workspace \
+  nexus-agent:latest \
+  "Create a Python web application called 'tweeter' using Flask. The app needs: 1. User registration (username + password) 2. User login with session management 3. Create a tweet (text only, max 280 chars) 4. View timeline (all tweets, newest first). Use SQLite for the database. Keep it simple."
+
+# 5. Check results
+python3 -c "import sqlite3; conn = sqlite3.connect('data/session.db'); cursor = conn.cursor(); cursor.execute('SELECT id, type, status, retry_count FROM tickets'); [print(row) for row in cursor.fetchall()]"
 ```
-INTERFACE REGISTRY (existing functions):
-{interface_registry}
-```
 
-### Fix 3: Validate dependencies field in Worker
+## Success Criteria
+- **Minimum:** 6/8 tickets pass (all 4 source files + at least 2 test files)
+- **Target:** 8/8 tickets pass
+- **If <6/8 with fixes above:** Try `qwen2.5-coder:7b` model (pull with `ollama pull qwen2.5-coder:7b`)
 
-In `src/nexus/agent/worker.py`, in the dependencies sanitization block, also strip entries that look like ticket IDs or non-import text. A simple check:
-
-```python
-# Only write dependencies that look like valid Python imports
-if deps and not re.match(r"^TKT-", deps, re.IGNORECASE):
-    # Also ensure each line looks like "import X" or "from X import Y"
-    valid_deps = []
-    for dep_line in deps.split(","):
-        dep_line = dep_line.strip()
-        if dep_line.startswith("import ") or dep_line.startswith("from "):
-            valid_deps.append(dep_line)
-        elif dep_line and not re.match(r"^TKT-", dep_line, re.IGNORECASE):
-            valid_deps.append(f"import {dep_line}")
-    if valid_deps:
-        f.write("\n".join(valid_deps) + "\n\n")
-```
-
-### After applying fixes:
-1. Clear the workspace: `rm -rf /home/rutvej/nexus/workspace/src /home/rutvej/nexus/workspace/tests`
-2. Clear the session DB: `rm -f /home/rutvej/nexus/data/session.db`
-3. Rebuild Docker: `docker build -t nexus-agent -f docker/Dockerfile.nexus .`
-4. Re-run the experiment with the same Twitter clone spec
-5. Update `.nexus/checkpoint.md` and tell me to switch back to Opus
-
----
+## After Phase 3 Passes
+1. **Feature Extension Test:** Ask the agent to add a "like" feature to validate extensibility
+2. **Push final code to git**
+3. **Update checkpoint.md**

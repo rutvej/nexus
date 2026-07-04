@@ -62,6 +62,11 @@ class Worker:
                 description=ticket.description,
                 related_interfaces=ticket.related_interfaces
             )
+            if os.path.exists(full_path):
+                with open(full_path, "r", encoding="utf-8") as f:
+                    existing_content = f.read()
+                if existing_content.strip():
+                    prompt += f"\n\nEXISTING FILE CONTENT (your function must be compatible with this code):\n```python\n{existing_content}\n```"
         elif ticket_type == TicketType.WRITE_TEST:
             prompt = WRITE_TEST_PROMPT.format(
                 function_signature=ticket.function_signature,
@@ -75,6 +80,11 @@ class Worker:
                 error_log=ticket.error_log,
                 description=ticket.description
             )
+            if os.path.exists(full_path):
+                with open(full_path, "r", encoding="utf-8") as f:
+                    existing_content = f.read()
+                if existing_content.strip():
+                    prompt += f"\n\nEXISTING FILE CONTENT (your fix must be compatible with this code):\n```python\n{existing_content}\n```"
         else:
             # For CREATE_FILE or others, use a simple generic prompt with critical rules
             prompt = (
@@ -92,10 +102,18 @@ class Worker:
         ticket.llm_output = response.text
         code = self.extract_code(response.text)
         
+        # Apply auto-fix imports
+        code = self._auto_fix_imports(code)
+        
         # Write code to file
         os.makedirs(os.path.dirname(full_path), exist_ok=True)
 
         if ticket_type == TicketType.WRITE_FUNCTION:
+            if os.path.exists(full_path):
+                with open(full_path, "r", encoding="utf-8") as f:
+                    existing_content = f.read()
+                code = self._deduplicate_code(existing_content, code)
+
             # If function ticket, write signature + body or prepend dependencies if file empty
             func_name_match = re.search(r"def\s+(\w+)\s*\(", ticket.function_signature)
             has_signature = False
@@ -215,3 +233,98 @@ class Worker:
         after = lines[end_idx:]
         
         return "\n".join(before) + "\n" + new_func_block.strip() + "\n" + "\n".join(after)
+
+    def _auto_fix_imports(self, code: str) -> str:
+        """Add missing imports for common patterns the model forgets."""
+        needed_imports = []
+        
+        # Check if typing elements are used but not imported
+        if any(t in code for t in ["List[", "Dict[", "Tuple[", "Optional[", "Union["]):
+            needed_imports.append("from typing import List, Dict, Tuple, Optional, Union")
+            
+        # Check if datetime is used but not imported
+        if "datetime." in code or "datetime(" in code:
+            needed_imports.append("from datetime import datetime")
+            
+        # Check if sqlite3 is used but not imported
+        if "sqlite3." in code:
+            needed_imports.append("import sqlite3")
+
+        # Check if Flask / session is used but not imported
+        if any(f in code for f in ["Flask(", "render_template(", "redirect(", "url_for(", "request.", "session["]):
+            flask_funcs = [func for func in ["Flask", "render_template", "redirect", "url_for", "request", "session", "g", "jsonify"] if func in code]
+            if flask_funcs:
+                needed_imports.append(f"from flask import {', '.join(flask_funcs)}")
+            
+        # Only add imports that aren't already present in code
+        new_imports = []
+        for imp in needed_imports:
+            if imp.startswith("import "):
+                module = imp.split()[1]
+                if not re.search(r"\bimport\s+" + re.escape(module) + r"\b", code):
+                    new_imports.append(imp)
+            elif imp.startswith("from "):
+                module = imp.split()[1]
+                if not re.search(r"\bfrom\s+" + re.escape(module) + r"\s+import\b", code) and not re.search(r"\bimport\s+" + re.escape(module) + r"\b", code):
+                    new_imports.append(imp)
+                    
+        if new_imports:
+            return "\n".join(new_imports) + "\n\n" + code
+        return code
+
+    def _deduplicate_code(self, existing_content: str, new_code: str) -> str:
+        """Remove from new_code any imports or class defs that already exist in existing_content."""
+        import ast
+        try:
+            existing_tree = ast.parse(existing_content)
+            new_tree = ast.parse(new_code)
+        except Exception:
+            return new_code  # Can't parse, just return as-is
+        
+        # Collect existing imports, classes, functions
+        existing_imports = set()
+        existing_classes = set()
+        existing_functions = set()
+        for node in ast.walk(existing_tree):
+            if isinstance(node, ast.Import):
+                for alias in node.names:
+                    existing_imports.add(alias.name)
+            elif isinstance(node, ast.ImportFrom):
+                if node.module:
+                    for alias in node.names:
+                        existing_imports.add(f"{node.module}.{alias.name}")
+            elif isinstance(node, ast.ClassDef):
+                existing_classes.add(node.name)
+            elif isinstance(node, ast.FunctionDef):
+                existing_functions.add(node.name)
+        
+        lines = new_code.splitlines()
+        skip_lines = set()
+        
+        for node in new_tree.body:
+            should_skip = False
+            if isinstance(node, ast.Import):
+                if all(alias.name in existing_imports for alias in node.names):
+                    should_skip = True
+            elif isinstance(node, ast.ImportFrom):
+                if node.module:
+                    if all(f"{node.module}.{alias.name}" in existing_imports for alias in node.names):
+                        should_skip = True
+            elif isinstance(node, ast.ClassDef):
+                if node.name in existing_classes:
+                    should_skip = True
+            elif isinstance(node, ast.FunctionDef):
+                if node.name in existing_functions:
+                    should_skip = True
+                    
+            if should_skip:
+                end_line = getattr(node, "end_lineno", node.lineno) or node.lineno
+                for r in range(node.lineno, end_line + 1):
+                    skip_lines.add(r)
+        
+        filtered = []
+        for i, line in enumerate(lines, 1):
+            if i not in skip_lines:
+                filtered.append(line)
+        return "\n".join(filtered)
+

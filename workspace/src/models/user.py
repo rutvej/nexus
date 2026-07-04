@@ -1,23 +1,65 @@
-from sqlalchemy import create_engine, Column, Integer, String
-from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy.orm import sessionmaker
-
-Base = declarative_base()
+import sqlite3
 
 
-class User(Base):
-    __tablename__ = "users"
-    id = Column(Integer, primary_key=True)
-    username = Column(String(80), unique=True, nullable=False)
-    password = Column(String(120), nullable=False)
+import sqlite3
 
 
-def create_user(username, password):
-    engine = create_engine("sqlite:///example.db")
-    Base.metadata.create_all(engine)
-    Session = sessionmaker(bind=engine)
-    session = Session()
+class User:
+    def __init__(self, username, password):
+        self.username = username
+        self.password = password
 
-    new_user = User(username=username, password=password)
-    session.add(new_user)
-    session.commit()
+
+def create_user(username: str, password: str) -> User:
+    # Connect to the SQLite database (or create it if it doesn't exist)
+    conn = sqlite3.connect("users.db")
+    cursor = conn.cursor()
+
+    # Create a table for users if it doesn't exist
+    cursor.execute("""CREATE TABLE IF NOT EXISTS users (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        username TEXT UNIQUE NOT NULL,
+        password TEXT NOT NULL
+    )""")
+
+    # Insert the new user into the database
+    cursor.execute(
+        "INSERT INTO users (username, password) VALUES (?, ?)", (username, password)
+    )
+
+    # Commit the changes and close the connection
+    conn.commit()
+    conn.close()
+
+    # Create a new User object with the provided username and password
+    return User(username, password)
+
+
+def login_user(username: str, password: str) -> User:
+    # Connect to the SQLite database (or create it if it doesn't exist)
+    conn = sqlite3.connect("users.db")
+    cursor = conn.cursor()
+
+    # Create a table for users if it doesn't exist
+    cursor.execute("""CREATE TABLE IF NOT EXISTS users (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        username TEXT UNIQUE NOT NULL,
+        password TEXT NOT NULL
+    )""")
+
+    # Retrieve the user from the database by username and password
+    cursor.execute(
+        "SELECT * FROM users WHERE username = ? AND password = ?", (username, password)
+    )
+    user_data = cursor.fetchone()
+
+    if user_data:
+        # Create a new User object with the retrieved data
+        return User(user_data[1], user_data[2])
+    else:
+        # Return None if the user is not found
+        return None
+
+    # Commit the changes and close the connection
+    conn.commit()
+    conn.close()

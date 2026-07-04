@@ -114,3 +114,39 @@ def test_worker_fix_bug():
         assert "def sub(a, b):" in content
         assert "import os" in content
 
+
+def test_worker_auto_fix_imports():
+    w = Worker(MagicMock(), "")
+    
+    # List typing elements
+    code_with_list = "def get_items() -> List[str]:\n    return []"
+    fixed_list = w._auto_fix_imports(code_with_list)
+    assert "from typing import List" in fixed_list
+    
+    # Datetime elements
+    code_with_dt = "def get_now():\n    return datetime.now()"
+    fixed_dt = w._auto_fix_imports(code_with_dt)
+    assert "from datetime import datetime" in fixed_dt
+    
+    # Existing imports should not be duplicated
+    code_with_existing = "import sqlite3\ndef query():\n    db = sqlite3.connect()"
+    fixed_existing = w._auto_fix_imports(code_with_existing)
+    # Check that import sqlite3 only appears once (no additions)
+    assert fixed_existing.count("import sqlite3") == 1
+
+
+def test_worker_deduplicate_code():
+    w = Worker(MagicMock(), "")
+    
+    existing = "import sqlite3\n\nclass User:\n    pass"
+    new_code = "import sqlite3\nfrom typing import List\nclass User:\n    pass\ndef get_users() -> List[User]:\n    return []"
+    
+    deduped = w._deduplicate_code(existing, new_code)
+    # import sqlite3 and class User should be removed because they exist
+    # from typing import List and def get_users should remain
+    assert "import sqlite3" not in deduped
+    assert "class User" not in deduped
+    assert "from typing import List" in deduped
+    assert "def get_users" in deduped
+
+
