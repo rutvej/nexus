@@ -15,7 +15,7 @@ def create_user(username: str, password: str) -> User:
     conn = sqlite3.connect("users.db")
     cursor = conn.cursor()
 
-    # Create a table for users if it doesn't exist
+    # Create a table for users if it doesn't already exist
     cursor.execute("""CREATE TABLE IF NOT EXISTS users (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         username TEXT UNIQUE NOT NULL,
@@ -35,30 +35,34 @@ def create_user(username: str, password: str) -> User:
     return User(username, password)
 
 
+from typing import List
+
+
 def login_user(username: str, password: str) -> User:
     # Connect to the SQLite database (or create it if it doesn't exist)
     conn = sqlite3.connect("users.db")
     cursor = conn.cursor()
 
-    # Create a table for users if it doesn't exist
+    # Create a table for users if it doesn't already exist
     cursor.execute("""CREATE TABLE IF NOT EXISTS users (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         username TEXT UNIQUE NOT NULL,
         password TEXT NOT NULL
     )""")
 
-    # Retrieve the user from the database by username and password
-    cursor.execute(
-        "SELECT * FROM users WHERE username = ? AND password = ?", (username, password)
-    )
-    user_data = cursor.fetchone()
+    # Check if the user exists in the database
+    cursor.execute("SELECT * FROM users WHERE username = ?", (username,))
+    user = cursor.fetchone()
 
-    if user_data:
-        # Create a new User object with the retrieved data
-        return User(user_data[1], user_data[2])
+    if user:
+        # Verify the password
+        if user[2] == password:
+            # Create a new User object with the provided username and password
+            return User(user[1], user[2])
+        else:
+            raise ValueError("Invalid password")
     else:
-        # Return None if the user is not found
-        return None
+        raise ValueError("User not found")
 
     # Commit the changes and close the connection
     conn.commit()

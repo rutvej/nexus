@@ -255,6 +255,12 @@ class Worker:
             flask_funcs = [func for func in ["Flask", "render_template", "redirect", "url_for", "request", "session", "g", "jsonify"] if func in code]
             if flask_funcs:
                 needed_imports.append(f"from flask import {', '.join(flask_funcs)}")
+
+        # Check if project model classes are used but not imported (common in views/timeline)
+        if re.search(r"\bUser\b", code) and "from src.models.user" not in code and "import User" not in code:
+            needed_imports.append("from src.models.user import User")
+        if re.search(r"\bTweet\b", code) and "from src.models.tweet" not in code and "import Tweet" not in code:
+            needed_imports.append("from src.models.tweet import Tweet")
             
         # Only add imports that aren't already present in code
         new_imports = []

@@ -22,6 +22,7 @@ docker build -t nexus-agent -f "$SCRIPT_DIR/docker/Dockerfile.nexus" "$SCRIPT_DI
 
 echo ""
 echo "=== [3/3] Running Containerized Agent ==="
+echo "Model: ${OLLAMA_MODEL:-qwen2.5-coder:3b}"
 echo "Goal: $GOAL"
 echo ""
 docker run --rm -u 1000:1000 \
@@ -29,6 +30,7 @@ docker run --rm -u 1000:1000 \
   -v "$SCRIPT_DIR/data:/data" \
   --add-host host.docker.internal:host-gateway \
   -e OLLAMA_HOST=http://host.docker.internal:11435 \
+  -e OLLAMA_MODEL="${OLLAMA_MODEL:-qwen2.5-coder:3b}" \
   -e NEXUS_DATA_DIR=/data \
   -e NEXUS_WORKSPACE_DIR=/workspace \
   nexus-agent:latest \
