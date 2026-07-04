@@ -44,6 +44,7 @@ show_status() {
 
 # ─── Run the Docker container ────────────────────────────────────────────────
 docker_run() {
+    local EXTRA_ARGS="${1:-}"
     mkdir -p "$SCRIPT_DIR/data"
     docker run --rm -u 1000:1000 \
         -v "$SCRIPT_DIR/workspace:/workspace" \
@@ -54,7 +55,7 @@ docker_run() {
         -e NEXUS_WORKSPACE_DIR=/workspace \
         -e OLLAMA_MODEL="$MODEL" \
         nexus-agent:latest \
-        "$GOAL" 2>&1 | tee "$LOG_FILE"
+        "$GOAL" $EXTRA_ARGS 2>&1 | tee "$LOG_FILE"
 }
 
 # ─── Commands ────────────────────────────────────────────────────────────────
@@ -93,10 +94,10 @@ case "$CMD" in
 
     resume)
         echo ""
-        echo "▶ Resuming last incomplete experiment..."
+        echo "▶ Resuming last experiment (retrying escalated tickets)..."
         echo "  Model:  $MODEL"
         echo ""
-        docker_run
+        docker_run "--resume"
         echo ""
         echo "▶ Results:"
         show_status

@@ -9,6 +9,34 @@ class Tweet:
         self.text = text
 
 
+from src.models.tweet import Tweet
+
+import sqlite3
+
+
+class Tweet:
+    def __init__(self, text):
+        self.text = text
+
+
+import sqlite3
+
+
+class Tweet:
+    def __init__(self, text):
+        self.text = text
+
+
+from src.models.tweet import Tweet
+
+import sqlite3
+
+
+class Tweet:
+    def __init__(self, text):
+        self.text = text
+
+
 def create_tweet(text: str) -> Tweet:
     # Connect to the SQLite database (or create it if it doesn't exist)
     conn = sqlite3.connect("tweets.db")
@@ -29,3 +57,7 @@ def create_tweet(text: str) -> Tweet:
 
     # Create a new Tweet object with the provided text
     return Tweet(text)
+
+
+def create_tweet(text: str) -> Tweet:
+    from src.models.tweet import Tweet

@@ -24,11 +24,35 @@ class Engine:
         self.worker = Worker(router, self.workspace_dir)
         self.verifier = Verifier(self.workspace_dir)
 
-    def run(self, project_spec: str, max_steps: int = 500) -> str:
+    def retry_escalated(self):
+        """
+        Reset all ESCALATED tickets back to BACKLOG with retry_count=0
+        so they can be retried with updated code/prompts.
+        """
+        all_tickets = self.queue.list_all()
+        reset_count = 0
+        for t in all_tickets:
+            if t.status == TicketStatus.ESCALATED:
+                t.status = TicketStatus.BACKLOG
+                t.retry_count = 0
+                t.error_log = ""
+                t.escalation_note = ""
+                self.queue.update_ticket(t)
+                reset_count += 1
+        return reset_count
+
+    def run(self, project_spec: str, max_steps: int = 500, resume: bool = False) -> str:
         """
         Runs the main loop to build the requested project spec.
+        If resume=True, resets escalated tickets and retries them.
         Returns a summary string of the execution results.
         """
+        # Step 0: If resuming, reset escalated tickets
+        if resume:
+            reset_count = self.retry_escalated()
+            if reset_count:
+                print(f"  Reset {reset_count} escalated ticket(s) back to BACKLOG for retry.")
+
         # Step 1: Decompose feature request into tickets if queue is empty
         if not self.queue.list_all():
             try:
