@@ -37,10 +37,11 @@ Expected return type:
 
 CRITICAL RULES:
 - You MUST import the function under test from {target_file} (e.g. `from {target_file} import ...`).
+- Inspect the source code of the module under test (provided below if available) to ensure class names, attribute names, and return types match exactly. Do not guess class properties.
 - Do NOT redefine, copy, or mock the function you are testing. You must test the actual implementation.
 - Do NOT use @pytest.fixture or any pytest fixtures. Put ALL setup and teardown code DIRECTLY INSIDE the test function body.
 - If testing database functions: they use SQLite and write to a .db file (e.g. `users.db` or `tweets.db`). At the START of your test function, delete the .db file if it exists using `import os; os.remove('users.db') if os.path.exists('users.db') else None` to ensure a clean state.
-- If testing database query/getter functions (like view_timeline or login_user): you MUST first insert mock test data (e.g., insert users or tweets) into the database at the start of your test so that the query function has records to retrieve and does not return empty results.
+- If testing database query/getter functions (like view_timeline or login_user): you MUST first insert mock test data (e.g., insert users or tweets) into the database at the start of your test. Connect using `sqlite3.connect('dbname.db')`, create the necessary tables if they do not exist, run insert queries, commit, and close. NEVER write plain SQL text directly to the database file via `open('dbname.db', 'w')`.
 - Write exactly ONE test function named `test_<function_name>`. Include at least 3 assertions.
 - Output ONLY the test function and its imports. No fixtures, no classes, no markdown."""
 

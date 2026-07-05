@@ -13,6 +13,8 @@ def test_worker_extract_code():
     assert w.extract_code("TKT-004\nprint(4)") == "print(4)"
     assert w.extract_code("# TKT-004: Write something\nprint(5)") == "print(5)"
     assert w.extract_code("```python\nTKT-003: dummy\ndef get_timeline():\n    return []\n```") == "def get_timeline():\n    return []"
+    assert w.extract_code("```python\nprint(6)") == "print(6)"
+    assert w.extract_code("```\nprint(7)") == "print(7)"
 
 def test_worker_execute_ticket():
     with tempfile.TemporaryDirectory() as tmpdir:

@@ -28,6 +28,14 @@ class Worker:
             match = re.search(r"```\s*(.*?)\s*```", cleaned, re.DOTALL)
             if match:
                 cleaned = match.group(1).strip()
+            else:
+                # Robust fallback for truncated/incomplete code blocks
+                if cleaned.startswith("```python"):
+                    cleaned = cleaned[9:].strip()
+                elif cleaned.startswith("```"):
+                    cleaned = cleaned[3:].strip()
+                if cleaned.endswith("```"):
+                    cleaned = cleaned[:-3].strip()
             
         # Strip leftover ticket ID markers (e.g. lines starting with TKT- or # TKT-)
         lines = []
@@ -74,6 +82,17 @@ class Worker:
                 return_type=ticket.return_type,
                 target_file=ticket.dependencies
             )
+            # Find and append source code of the module under test if available
+            dep_path = ticket.dependencies.replace(".", "/") + ".py"
+            full_dep_path = os.path.join(self.workspace_dir, dep_path)
+            if os.path.exists(full_dep_path):
+                with open(full_dep_path, "r", encoding="utf-8") as f:
+                    source_code = f.read()
+                if source_code.strip():
+                    prompt += f"\n\nSOURCE CODE OF THE MODULE UNDER TEST:\n```python\n{source_code}\n```"
+            # Append previous error log if retrying
+            if ticket.error_log:
+                prompt += f"\n\nPREVIOUS TEST FAILURE TRACEBACK (your updated test must address and fix this issue):\n```\n{ticket.error_log}\n```"
         elif ticket_type == TicketType.FIX_BUG:
             prompt = FIX_BUG_PROMPT.format(
                 function_signature=ticket.function_signature,
@@ -94,7 +113,7 @@ class Worker:
                 "- Output ONLY pure, executable Python code. No markdown, no explanations."
             )
 
-        response = self.router.route_and_generate(prompt, ticket)
+        response = self.router.route_and_generate(prompt, ticket, max_tokens=1500)
         if not response.success:
             ticket.error_log = response.error
             return False
@@ -103,7 +122,7 @@ class Worker:
         code = self.extract_code(response.text)
         
         # Apply auto-fix imports
-        code = self._auto_fix_imports(code)
+        code = self._auto_fix_imports(code, ticket)
         
         # Write code to file
         os.makedirs(os.path.dirname(full_path), exist_ok=True)
@@ -250,9 +269,10 @@ class Worker:
         
         return "\n".join(before) + "\n" + new_func_block.strip() + "\n" + "\n".join(after)
 
-    def _auto_fix_imports(self, code: str) -> str:
+    def _auto_fix_imports(self, code: str, ticket: Ticket = None) -> str:
         """Add missing imports for common patterns the model forgets."""
         needed_imports = []
+        target_file = ticket.target_file if ticket else ""
         
         # Check if typing elements are used but not imported
         if any(t in code for t in ["List[", "Dict[", "Tuple[", "Optional[", "Union["]):
@@ -266,6 +286,14 @@ class Worker:
         if "sqlite3." in code:
             needed_imports.append("import sqlite3")
 
+        # Check if os is used but not imported
+        if "os." in code or "os.path" in code or "os.remove" in code:
+            needed_imports.append("import os")
+
+        # Check if pytest is used but not imported
+        if "pytest." in code or "pytest.raises" in code:
+            needed_imports.append("import pytest")
+
         # Check if Flask / session is used but not imported
         if any(f in code for f in ["Flask(", "render_template(", "redirect(", "url_for(", "request.", "session["]):
             flask_funcs = [func for func in ["Flask", "render_template", "redirect", "url_for", "request", "session", "g", "jsonify"] if func in code]
@@ -274,11 +302,41 @@ class Worker:
 
         # Check if project model classes are used but not imported (common in views/timeline)
         if re.search(r"\bUser\b", code):
-            if not re.search(r"\bimport\s+User\b", code) and not re.search(r"\bfrom\s+\S+\s+import\s+[^#\n]*\bUser\b", code):
-                needed_imports.append("from src.models.user import User")
+            if "src/models/user.py" not in target_file.replace("\\", "/") and not re.search(r"\bimport\s+User\b", code) and not re.search(r"\bfrom\s+\S+\s+import\s+[^#\n]*\bUser\b", code):
+                imported_custom_user = False
+                if ticket and ticket.type == TicketType.WRITE_TEST and ticket.dependencies:
+                    dep_path = ticket.dependencies.replace(".", "/") + ".py"
+                    full_dep_path = os.path.join(self.workspace_dir, dep_path)
+                    if os.path.exists(full_dep_path):
+                        with open(full_dep_path, "r", encoding="utf-8") as f:
+                            dep_source = f.read()
+                        if "class User" in dep_source:
+                            needed_imports.append(f"from {ticket.dependencies} import User")
+                            imported_custom_user = True
+                if not imported_custom_user:
+                    needed_imports.append("from src.models.user import User")
         if re.search(r"\bTweet\b", code):
-            if not re.search(r"\bimport\s+Tweet\b", code) and not re.search(r"\bfrom\s+\S+\s+import\s+[^#\n]*\bTweet\b", code):
-                needed_imports.append("from src.models.tweet import Tweet")
+            if "src/models/tweet.py" not in target_file.replace("\\", "/") and not re.search(r"\bimport\s+Tweet\b", code) and not re.search(r"\bfrom\s+\S+\s+import\s+[^#\n]*\bTweet\b", code):
+                imported_custom_tweet = False
+                if ticket and ticket.type == TicketType.WRITE_TEST and ticket.dependencies:
+                    dep_path = ticket.dependencies.replace(".", "/") + ".py"
+                    full_dep_path = os.path.join(self.workspace_dir, dep_path)
+                    if os.path.exists(full_dep_path):
+                        with open(full_dep_path, "r", encoding="utf-8") as f:
+                            dep_source = f.read()
+                        if "class Tweet" in dep_source:
+                            needed_imports.append(f"from {ticket.dependencies} import Tweet")
+                            imported_custom_tweet = True
+                if not imported_custom_tweet:
+                    needed_imports.append("from src.models.tweet import Tweet")
+
+        # Check if it's a test file and import of the function under test is missing
+        if ticket and ticket.type == TicketType.WRITE_TEST and ticket.function_signature and ticket.dependencies:
+            func_name_match = re.search(r"def\s+(\w+)\s*\(", ticket.function_signature)
+            if func_name_match:
+                func_name = func_name_match.group(1)
+                if not re.search(r"\bimport\s+" + re.escape(func_name) + r"\b", code) and not re.search(r"\bfrom\s+\S+\s+import\s+[^#\n]*\b" + re.escape(func_name) + r"\b", code):
+                    needed_imports.append(f"from {ticket.dependencies} import {func_name}")
             
         # Only add imports that aren't already present in code
         new_imports = []

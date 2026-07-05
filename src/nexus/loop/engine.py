@@ -47,7 +47,13 @@ class Engine:
         If resume=True, resets escalated tickets and retries them.
         Returns a summary string of the execution results.
         """
-        # Step 0: If resuming, reset escalated tickets
+        # Step 0: Reset any stuck IN_PROGRESS tickets back to BACKLOG
+        all_tickets = self.queue.list_all()
+        for t in all_tickets:
+            if t.status == TicketStatus.IN_PROGRESS:
+                t.status = TicketStatus.BACKLOG
+                self.queue.update_ticket(t)
+
         if resume:
             reset_count = self.retry_escalated()
             if reset_count:

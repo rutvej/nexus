@@ -9,20 +9,24 @@ class OllamaBackend(BaseLLM):
     def __init__(self, override_host: str = None, override_model: str = None):
         self.host = override_host or config.OLLAMA_HOST
         self.model = override_model or config.OLLAMA_MODEL
+        self._cached_available = None
 
     def name(self) -> str:
         return f"ollama/{self.model}"
 
     def is_available(self) -> bool:
+        if self._cached_available is not None:
+            return self._cached_available
         url = f"{self.host.rstrip('/')}/api/tags"
         try:
             req = urllib.request.Request(url, method="GET")
-            with urllib.request.urlopen(req, timeout=5) as response:
+            with urllib.request.urlopen(req, timeout=15) as response:
                 if response.status == 200:
                     data = json.loads(response.read().decode("utf-8"))
                     models = [m["name"] for m in data.get("models", [])]
                     # Check if our target model or base of it exists
-                    return any(self.model in m or m in self.model for m in models)
+                    self._cached_available = any(self.model in m or m in self.model for m in models)
+                    return self._cached_available
         except Exception:
             return False
         return False

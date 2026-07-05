@@ -110,15 +110,15 @@ case "$CMD" in
     pull-model)
         echo "▶ Pulling recommended model: qwen2.5-coder:3b"
         echo "  Size: ~2GB RAM — good balance of speed and quality on 16GB systems"
-        curl -s http://localhost:11435/api/pull -d "{\"name\":\"qwen2.5-coder:3b\"}" | python3 -c "
+        curl -s http://localhost:11435/api/pull -d '{"name":"qwen2.5-coder:3b"}' | python3 -c '
 import sys, json
 for line in sys.stdin:
     try:
         d = json.loads(line)
-        if 'status' in d:
-            print(f\"  {d.get('status','')} {d.get('completed','')}/{d.get('total','')} bytes\" if 'total' in d else f\"  {d['status']}\")
+        if "status" in d:
+            print(f"  {d.get(\"status\",\"\")} {d.get(\"completed\",\"\")}/{d.get(\"total\",\"\")} bytes" if "total" in d else f"  {d[\"status\"]}")
     except: pass
-"
+'
         echo "  Done. Run ./nexus.sh run --model qwen2.5-coder:3b"
         ;;
 
@@ -130,9 +130,16 @@ for line in sys.stdin:
         fi
         ;;
 
+    dashboard)
+        echo "▶ Starting Nexus Web Dashboard on http://localhost:8050"
+        echo "  Press Ctrl+C to stop."
+        echo ""
+        "$SCRIPT_DIR/venv/bin/python" "$SCRIPT_DIR/dashboard.py" --port 8050
+        ;;
+
     *)
         echo "Unknown command: $CMD"
-        echo "Usage: ./nexus.sh [run|resume|status|pull-model|logs] [--rebuild] [--model MODEL] [--goal '...']"
+        echo "Usage: ./nexus.sh [run|resume|status|pull-model|logs|dashboard] [--rebuild] [--model MODEL] [--goal '...']"
         exit 1
         ;;
 
