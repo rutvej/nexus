@@ -14,11 +14,11 @@ WORKSPACE_DIR.mkdir(parents=True, exist_ok=True)
 # Limits & Thresholds
 MAX_RETRIES_PER_TICKET = 3
 MAX_CONSECUTIVE_FAILURES = 5
-TIMEOUT_OLLAMA = 180
+TIMEOUT_OLLAMA = 600
 TIMEOUT_TESTS = 60
 
 # Model config
-OLLAMA_HOST = os.environ.get("OLLAMA_HOST", "http://localhost:11434")
+OLLAMA_HOST = os.environ.get("OLLAMA_HOST", "http://localhost:11435")
 OLLAMA_MODEL = os.environ.get("OLLAMA_MODEL", "qwen2.5-coder:1.5b")
 
 # Cloud API keys (stubs check presence)

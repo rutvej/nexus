@@ -69,6 +69,7 @@ class Manager:
 
     def parse_tickets(self, text: str) -> List[dict]:
         """Cleans markdown wrappers and parses JSON list of tickets."""
+        print(f"=== DECOMPOSITION RESPONSE FROM LLM ===\n{text}\n=======================================")
         cleaned = text.strip()
         if cleaned.startswith("```json"):
             cleaned = cleaned[7:]
@@ -83,7 +84,12 @@ class Manager:
         if start_idx != -1 and end_idx != -1:
             cleaned = cleaned[start_idx:end_idx + 1]
             
-        return json.loads(cleaned)
+        try:
+            return json.loads(cleaned)
+        except Exception as e:
+            print(f"Failed to parse JSON: {e}")
+            print(f"Cleaned text was:\n{cleaned}")
+            raise e
 
     def decompose_feature(self, feature_description: str) -> List[Ticket]:
         """
@@ -98,7 +104,7 @@ class Manager:
         
         # Use dummy ticket for routing decomposition
         route_ticket = Ticket(id="DECOMP-000", type=TicketType.CREATE_FILE, title="Decompose Feature", status=TicketStatus.IN_PROGRESS, target_file="DECOMP")
-        response = self.router.route_and_generate(prompt, route_ticket, max_tokens=1000)
+        response = self.router.route_and_generate(prompt, route_ticket, max_tokens=3000)
         
         if not response.success:
             raise RuntimeError(f"Manager decomposition failed: {response.error}")
